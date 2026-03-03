@@ -111,7 +111,9 @@ fi
 # Current working directory
 cwd=$(echo "$input" | jq -r '.cwd // empty')
 if [ -n "$cwd" ]; then
-    display_dir="${cwd##*/}"
+    # Normalize backslashes to forward slashes (Windows paths)
+    cwd_normalized="${cwd//\\//}"
+    display_dir="${cwd_normalized##*/}"
     git_branch=$(git -C "${cwd}" rev-parse --abbrev-ref HEAD 2>/dev/null)
     out+=" ${dim}|${reset} "
     out+="${cyan}${display_dir}${reset}"
