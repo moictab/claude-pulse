@@ -103,7 +103,7 @@ claude_version=$(claude --version 2>/dev/null | head -1 | sed 's/[^0-9.].*//; s/
 
 # ===== Build single-line output =====
 out=""
-out+="${blue}${model_name}${reset}"
+out+="🤖 ${blue}${model_name}${reset}"
 if [ -n "$claude_version" ]; then
     out+=" ${dim}v${claude_version}${reset}"
 fi
@@ -116,9 +116,9 @@ if [ -n "$cwd" ]; then
     display_dir="${cwd_normalized##*/}"
     git_branch=$(git -C "${cwd}" rev-parse --abbrev-ref HEAD 2>/dev/null)
     out+=" ${dim}|${reset} "
-    out+="${cyan}${display_dir}${reset}"
+    out+="📁 ${cyan}${display_dir}${reset}"
     if [ -n "$git_branch" ]; then
-        out+="${dim}@${reset}${green}${git_branch}${reset}"
+        out+="${dim}@${reset}🌿 ${green}${git_branch}${reset}"
         if ! git -C "${cwd}" diff --quiet HEAD 2>/dev/null || [ -n "$(git -C "${cwd}" ls-files --others --exclude-standard 2>/dev/null | head -1)" ]; then
             out+="${red}*${reset}"
         fi
@@ -127,9 +127,9 @@ fi
 
 ctx_bar=$(build_bar "$pct_used" 8)
 out+=" ${dim}|${reset} "
-out+="${orange}${used_tokens}/${total_tokens}${reset} ${ctx_bar} ${cyan}${pct_used}%${reset}"
+out+="📊 ${orange}${used_tokens}/${total_tokens}${reset} ${ctx_bar} ${cyan}${pct_used}%${reset}"
 out+=" ${dim}|${reset} "
-out+="${dim}thinking${reset} "
+out+="🧠 ${dim}thinking${reset} "
 if $thinking_on; then
     out+="${green}✔${reset}"
 else
@@ -304,7 +304,7 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     five_hour_reset=$(format_reset_time "$five_hour_reset_iso" "time")
     five_hour_bar=$(build_bar "$five_hour_pct" "$bar_width")
 
-    out+="${sep}${white}5h${reset} ${five_hour_bar} ${cyan}${five_hour_pct}%${reset}"
+    out+="${sep}⏱️ ${white}5h${reset} ${five_hour_bar} ${cyan}${five_hour_pct}%${reset}"
     [ -n "$five_hour_reset" ] && out+=" ${dim}@${five_hour_reset}${reset}"
 
     # ---- 7-day (weekly) ----
@@ -313,7 +313,7 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     seven_day_reset=$(format_reset_time "$seven_day_reset_iso" "datetime")
     seven_day_bar=$(build_bar "$seven_day_pct" "$bar_width")
 
-    out+="${sep}${white}7d${reset} ${seven_day_bar} ${cyan}${seven_day_pct}%${reset}"
+    out+="${sep}📅 ${white}7d${reset} ${seven_day_bar} ${cyan}${seven_day_pct}%${reset}"
     [ -n "$seven_day_reset" ] && out+=" ${dim}@${seven_day_reset}${reset}"
 
     # ---- Extra usage ----
@@ -324,7 +324,7 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
         extra_limit=$(echo "$usage_data" | jq -r '.extra_usage.monthly_limit // 0' | awk '{printf "%.2f", $1/100}')
         extra_bar=$(build_bar "$extra_pct" "$bar_width")
 
-        out+="${sep}${white}extra${reset} ${extra_bar} ${cyan}\$${extra_used}/\$${extra_limit}${reset}"
+        out+="${sep}💰 ${white}extra${reset} ${extra_bar} ${cyan}\$${extra_used}/\$${extra_limit}${reset}"
     fi
 fi
 
