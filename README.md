@@ -4,22 +4,26 @@ A feature-rich status line for [Claude Code](https://docs.anthropic.com/en/docs/
 
 ## What it shows
 
-| Segment | Description |
-|---------|-------------|
-| **Model** | Current model name (e.g., Claude Opus 4.6) |
-| **Version** | Claude Code CLI version |
-| **Directory** | Current working directory with git branch |
-| **Git dirty** | Red `*` indicator when there are uncommitted changes |
-| **Context usage** | Token count with a horizontal progress bar and percentage |
-| **Thinking** | Extended thinking status (green ✔ / red ✘) |
-| **5h usage** | 5-hour rate limit with progress bar and reset time |
-| **7d usage** | 7-day rate limit with progress bar and reset time |
-| **Extra usage** | Extra usage credits spent vs. limit (if enabled) |
+| Segment | Emoji | Description |
+|---------|-------|-------------|
+| **Model** | 🤖 | Current model name (e.g., Claude Opus 4.7) |
+| **1M context** | | `1M` badge when running on a 1M-token context window |
+| **Version** | | Claude Code CLI version |
+| **Directory** | 📁 | Current working directory |
+| **Git branch** | 🌿 | Current branch with red `*` for uncommitted changes |
+| **Context usage** | 📊 | Token count with a color-coded progress bar and percentage |
+| **200k+ flag** | | Red `!200k` indicator when the session has crossed the 200k pricing tier |
+| **Thinking** | 🧠 | Extended thinking status (green ✔ / red ✘) |
+| **Effort** | 🎯 | Reasoning effort level (`low` / `medium` / `high` / `xhigh` / `max`) when supported by the model |
+| **Output style** | 🎨 | Active output style (hidden when `default`) |
+| **5h usage** | ⚡ | 5-hour rate limit with progress bar and reset time (Pro/Max) |
+| **7d usage** | | 7-day rate limit with progress bar and reset time (Pro/Max) |
+| **Extra usage** | 💰 | Extra usage credits spent vs. limit (if enabled) |
 
 ### Example output
 
 ```
-Claude Opus 4.6 v2.1.63 | myproject@main* | 45k/200k ██░░░░░░ 22% | thinking ✔ | 5h ██░░░░ 30% @2:15pm | 7d █░░░░░ 12% @mar 7, 9:00am
+🤖 Claude Opus 4.7 1M v2.1.117 | 📁 myproject@🌿 main* | 📊 45k/1.0m █░░░░░░░ 4% | 🧠 thinking ✔ | 🎯 high | ⚡ 5h ██░░░ 30% @2:15pm | 7d █░░░░ 12% @may 5, 9:00am | 💰 $0.00/$42.50
 ```
 
 ## Requirements
@@ -62,9 +66,13 @@ Progress bars change color based on usage level:
 - **Yellow** — 70-89%
 - **Red** — 90%+
 
-### API usage caching
+### Rate limits
 
-Rate limit data is fetched from the Anthropic API and cached for 60 seconds at `/tmp/claude/statusline-usage-cache.json` to avoid excessive API calls.
+5-hour and 7-day rate limits are read directly from the status line JSON Claude Code provides on stdin (Pro/Max accounts only) — no API call required.
+
+### Extra usage caching
+
+The extra-usage segment (💰) is fetched from the Anthropic OAuth usage endpoint and cached for 60 seconds at `/tmp/claude/statusline-usage-cache.json` to avoid excessive API calls. This is the only segment that still requires a network request.
 
 ### Cross-platform OAuth
 

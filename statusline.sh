@@ -90,20 +90,46 @@ pct_remain=$(( 100 - pct_used ))
 used_comma=$(format_commas $current)
 remain_comma=$(format_commas $(( size - current )))
 
-# Check thinking status
+# Check thinking status (stdin first, fall back to settings)
 thinking_on=false
-settings_path="$HOME/.claude/settings.json"
-if [ -f "$settings_path" ]; then
-    thinking_val=$(jq -r '.alwaysThinkingEnabled // false' "$settings_path" 2>/dev/null)
-    [ "$thinking_val" = "true" ] && thinking_on=true
+thinking_stdin=$(echo "$input" | jq -r '.thinking.enabled // empty')
+if [ "$thinking_stdin" = "true" ]; then
+    thinking_on=true
+elif [ "$thinking_stdin" = "false" ]; then
+    thinking_on=false
+else
+    settings_path="$HOME/.claude/settings.json"
+    if [ -f "$settings_path" ]; then
+        thinking_val=$(jq -r '.alwaysThinkingEnabled // false' "$settings_path" 2>/dev/null)
+        [ "$thinking_val" = "true" ] && thinking_on=true
+    fi
 fi
 
-# Get Claude Code version
-claude_version=$(claude --version 2>/dev/null | head -1 | sed 's/[^0-9.].*//; s/^$//')
+# Reasoning effort level (optional; only present on supporting models)
+effort_level=$(echo "$input" | jq -r '.effort.level // empty')
+
+# Output style (skip when default)
+output_style=$(echo "$input" | jq -r '.output_style.name // empty')
+
+# Exceeds 200k pricing tier flag
+exceeds_200k=$(echo "$input" | jq -r '.exceeds_200k_tokens // false')
+
+# 1M context window indicator
+is_1m=false
+[ "$size" -ge 1000000 ] 2>/dev/null && is_1m=true
+
+# Claude Code version (stdin first, fall back to CLI)
+claude_version=$(echo "$input" | jq -r '.version // empty')
+if [ -z "$claude_version" ]; then
+    claude_version=$(claude --version 2>/dev/null | head -1 | sed 's/[^0-9.].*//; s/^$//')
+fi
 
 # ===== Build single-line output =====
 out=""
 out+="🤖 ${blue}${model_name}${reset}"
+if $is_1m; then
+    out+=" ${cyan}1M${reset}"
+fi
 if [ -n "$claude_version" ]; then
     out+=" ${dim}v${claude_version}${reset}"
 fi
@@ -128,12 +154,21 @@ fi
 ctx_bar=$(build_bar "$pct_used" 8)
 out+=" ${dim}|${reset} "
 out+="📊 ${orange}${used_tokens}/${total_tokens}${reset} ${ctx_bar} ${cyan}${pct_used}%${reset}"
+if [ "$exceeds_200k" = "true" ]; then
+    out+=" ${red}!200k${reset}"
+fi
 out+=" ${dim}|${reset} "
 out+="🧠 ${dim}thinking${reset} "
 if $thinking_on; then
     out+="${green}✔${reset}"
 else
     out+="${red}✘${reset}"
+fi
+if [ -n "$effort_level" ]; then
+    out+=" ${dim}|${reset} 🎯 ${cyan}${effort_level}${reset}"
+fi
+if [ -n "$output_style" ] && [ "$output_style" != "default" ]; then
+    out+=" ${dim}|${reset} 🎨 ${cyan}${output_style}${reset}"
 fi
 
 # ===== Cross-platform OAuth token resolution (from statusline.sh) =====
@@ -214,7 +249,7 @@ if $needs_refresh; then
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $token" \
             -H "anthropic-beta: oauth-2025-04-20" \
-            -H "User-Agent: claude-code/2.1.34" \
+            -H "User-Agent: claude-code/${claude_version:-unknown}" \
             "https://api.anthropic.com/api/oauth/usage" 2>/dev/null)
         if [ -n "$response" ] && echo "$response" | jq . >/dev/null 2>&1; then
             usage_data="$response"
@@ -294,29 +329,33 @@ format_reset_time() {
 }
 
 sep=" ${dim}|${reset} "
+bar_width=5
 
-if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
-    bar_width=6
-
-    # ---- 5-hour (current) ----
-    five_hour_pct=$(echo "$usage_data" | jq -r '.five_hour.utilization // 0' | awk '{printf "%.0f", $1}')
-    five_hour_reset_iso=$(echo "$usage_data" | jq -r '.five_hour.resets_at // empty')
+# ---- 5-hour and 7-day rate limits (from stdin, Pro/Max only) ----
+five_hour_pct_raw=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
+if [ -n "$five_hour_pct_raw" ]; then
+    five_hour_pct=$(echo "$five_hour_pct_raw" | awk '{printf "%.0f", $1}')
+    five_hour_reset_iso=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
     five_hour_reset=$(format_reset_time "$five_hour_reset_iso" "time")
     five_hour_bar=$(build_bar "$five_hour_pct" "$bar_width")
 
-    out+="${sep}⏱️ ${white}5h${reset} ${five_hour_bar} ${cyan}${five_hour_pct}%${reset}"
+    out+="${sep}⚡ ${white}5h${reset} ${five_hour_bar} ${cyan}${five_hour_pct}%${reset}"
     [ -n "$five_hour_reset" ] && out+=" ${dim}@${five_hour_reset}${reset}"
+fi
 
-    # ---- 7-day (weekly) ----
-    seven_day_pct=$(echo "$usage_data" | jq -r '.seven_day.utilization // 0' | awk '{printf "%.0f", $1}')
-    seven_day_reset_iso=$(echo "$usage_data" | jq -r '.seven_day.resets_at // empty')
+seven_day_pct_raw=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
+if [ -n "$seven_day_pct_raw" ]; then
+    seven_day_pct=$(echo "$seven_day_pct_raw" | awk '{printf "%.0f", $1}')
+    seven_day_reset_iso=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
     seven_day_reset=$(format_reset_time "$seven_day_reset_iso" "datetime")
     seven_day_bar=$(build_bar "$seven_day_pct" "$bar_width")
 
-    out+="${sep}📅 ${white}7d${reset} ${seven_day_bar} ${cyan}${seven_day_pct}%${reset}"
+    out+="${sep}${white}7d${reset} ${seven_day_bar} ${cyan}${seven_day_pct}%${reset}"
     [ -n "$seven_day_reset" ] && out+=" ${dim}@${seven_day_reset}${reset}"
+fi
 
-    # ---- Extra usage ----
+# ---- Extra usage (from OAuth /api/oauth/usage; not exposed via stdin) ----
+if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
     extra_enabled=$(echo "$usage_data" | jq -r '.extra_usage.is_enabled // false')
     if [ "$extra_enabled" = "true" ]; then
         extra_pct=$(echo "$usage_data" | jq -r '.extra_usage.utilization // 0' | awk '{printf "%.0f", $1}')
@@ -324,7 +363,7 @@ if [ -n "$usage_data" ] && echo "$usage_data" | jq -e . >/dev/null 2>&1; then
         extra_limit=$(echo "$usage_data" | jq -r '.extra_usage.monthly_limit // 0' | awk '{printf "%.2f", $1/100}')
         extra_bar=$(build_bar "$extra_pct" "$bar_width")
 
-        out+="${sep}💰 ${white}extra${reset} ${extra_bar} ${cyan}\$${extra_used}/\$${extra_limit}${reset}"
+        out+="${sep}💰 ${cyan}\$${extra_used}/\$${extra_limit}${reset} ${extra_bar}"
     fi
 fi
 
