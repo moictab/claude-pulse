@@ -127,6 +127,11 @@ expect "context bar rounds to the nearest cell" "$out" "ctx ━━━━━━�
 
 out=$(variant 'del(.rate_limits, .cost, .prompt_cache)' | sed -n 2p)
 equal "line 2 keeps extra usage when nothing else is present" "$out" 'extra $23.37/$42.50 ━━━── 55%'
+out=$(CLAUDE_PULSE_EXTRA_USAGE=0 statusline < "$fixtures/statusline-full.json" | strip)
+reject "CLAUDE_PULSE_EXTRA_USAGE=0 hides extra usage" "$out" "extra"
+
+equal "statusline.sh --version" "$("$BASH" "$root/statusline.sh" --version)" "claude-pulse 2.0.0"
+equal "subagent-statusline.sh --version" "$("$BASH" "$root/subagent-statusline.sh" --version)" "claude-pulse 2.0.0"
 
 # ---- Git branch and dirty marker ----
 repo="$tmp/repo"

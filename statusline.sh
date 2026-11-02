@@ -10,6 +10,12 @@
 
 set -f  # disable globbing
 
+CLAUDE_PULSE_VERSION="2.0.0"
+if [ "${1:-}" = "--version" ]; then
+    printf 'claude-pulse %s\n' "$CLAUDE_PULSE_VERSION"
+    exit 0
+fi
+
 IFS= read -r -d '' input  # all of stdin, without spawning cat
 
 if [ -z "$input" ]; then
@@ -346,6 +352,12 @@ refresh_usage_cache() {
     fi
 }
 
+# CLAUDE_PULSE_EXTRA_USAGE=0 turns the segment off: no token lookup and no network request
+case "${CLAUDE_PULSE_EXTRA_USAGE:-1}" in
+    0|false|off|no) extra_usage=false ;;
+    *) extra_usage=true ;;
+esac
+
 mkdir -p "$cache_dir" 2>/dev/null
 cache_age=$(file_age "$cache_file")
 # Refresh in the background and render from the cache: Claude Code cancels a status line script
@@ -353,12 +365,12 @@ cache_age=$(file_age "$cache_file")
 # Touching the cache first marks the attempt, so concurrent runs don't fetch again.
 if [ "${cache_age:-$cache_max_age}" -ge "$cache_max_age" ]; then
     touch "$cache_file" 2>/dev/null
-    command -v curl >/dev/null 2>&1 && refresh_usage_cache </dev/null >/dev/null 2>&1 &
+    $extra_usage && command -v curl >/dev/null 2>&1 && refresh_usage_cache </dev/null >/dev/null 2>&1 &
     # Subagent files from sessions that ended long ago (at most once a minute, like the refresh)
     find "$cache_dir" -maxdepth 1 -name 'subagents-*.json' -mmin +1440 -exec rm -f {} + </dev/null >/dev/null 2>&1 &
 fi
 
-if [ -s "$cache_file" ]; then
+if $extra_usage && [ -s "$cache_file" ]; then
     extra=$(jq -r '
         select(.extra_usage.is_enabled == true) | .extra_usage
         | def money: (. * 100 + 0.5 | floor) as $c

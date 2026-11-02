@@ -19,8 +19,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ubuntu-24.04 has GNU coreutils; ubuntu-latest (26.04) has the Rust uutils coreutils
-        os: [ubuntu-24.04, ubuntu-latest, macos-latest, windows-latest]
+        # ubuntu-22.04: jq 1.6; ubuntu-24.04: jq 1.7.1, GNU coreutils;
+        # ubuntu-latest (26.04): Rust uutils coreutils; macOS: BSD tools, bash 3.2; Windows: Git Bash
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
