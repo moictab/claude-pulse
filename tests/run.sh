@@ -37,7 +37,18 @@ line() { printf '%s\n' "$2" | sed -n "${1}p"; }
 line_count() { printf '%s' "$1" | awk 'END { print NR }'; }
 
 pass() { passed=$((passed + 1)); }
-fail() { failed=$((failed + 1)); printf 'FAIL: %s\n' "$1"; shift; printf '  %s\n' "$@"; }
+fail() {
+    failed=$((failed + 1))
+    printf 'FAIL: %s\n' "$1"
+    printf '  %s\n' "${@:2}"
+    # In GitHub Actions, also report it as an annotation so it shows up on the PR checks
+    if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+        local details
+        details=$(printf '%s\n' "${@:2}" | cat -v)
+        details="${details//'%'/%25}"
+        printf '::error title=%s::%s\n' "$1" "${details//$'\n'/%0A}"
+    fi
+}
 
 expect() {  # <description> <text> <substring>
     if [[ "$2" == *"$3"* ]]; then pass; else fail "$1" "expected: ...$3..." "got:      $2"; fi
