@@ -32,13 +32,19 @@ Running `statusline.sh` by hand outside the tests may start a background request
 2. Make **one** `jq` call that turns every field into `name='value'` lines with `@sh`, then `eval` them. Formatting (token counts, money, durations, epoch conversion) happens inside that jq program. To add a field, add a key to the jq object and use `$key` in bash. shellcheck's SC2154 is disabled file-wide because of this `eval`.
 3. Segments are appended with `add1` (line 1: session) or `add2` (line 2: limits and cost). Both join with `$sep`. Print with `printf '%s\n'`. Line 2 is omitted when empty. The script always exits 0.
 
+Visual style. The user chose this deliberately after the emoji version looked messy, so keep it:
+- It matches Claude Code's own footer. No emoji. Labels (`ctx`, `5h`, `cache`, ...), separators and reset times are `$dim`. Values use the default text color.
+- Color only carries meaning: blue for the model, green for the branch and added lines, red for the dirty `*` and removed lines, yellow for warnings (`200k+`, `fast`, `no thinking`, `cold`). Bars go from green to red. The palette is blue, green, orange, yellow, red and dim; there is no cyan or white.
+- Hide what is always true. Thinking only shows as `no thinking`, and context shows only the percentage, not absolute tokens.
+- Reset times use `↻` with a 24-hour clock for 5h, and `9 nov` dates for 7d and spend. The style is chosen by window, not by "now", so output stays deterministic in tests.
+
 Conventions:
 - Colors are `$'\033[...]'` variables holding real escape bytes, and output is printed with `%s`, so backslashes in data (Windows paths) are never interpreted. Don't go back to `printf "%b"`.
 - Optional fields default to `""` in jq and their segment is added only when non-empty. Guard numbers with `num` (null → empty). `current_usage`, `used_percentage` and `hit_ratio` can be `null`.
-- `build_bar <pct> <width>` sets the global `$bar` (no subshell). Width is 8 for context and 5 for everything else. Colors: green below 50, orange from 50, yellow from 70, red from 90.
+- `build_bar <pct> <width>` sets the global `$bar` (no subshell). It draws a colored `━` filled part, rounded to the nearest cell, and a dim `─` empty part. Width is 10 for context and 5 for everything else. Colors: green below 50, orange from 50, yellow from 70, red from 90. `subagent-statusline.sh` has the same `bar` in jq.
 - `resets_at` is Unix epoch seconds. The jq `epoch` helper also accepts ISO 8601 strings from older Claude Code versions. `format_epoch` tries BSD `date -r` and then GNU `date -d @`, each checked on its own. Never put the first attempt in a pipeline before `||`: the pipeline's exit status comes from its last command, so the fallback would never run.
 - Git uses a single `git status --porcelain=v2 --branch` call for both the branch and the dirty state.
-- The 💰 extra-usage segment is the only network use. It calls the undocumented `/api/oauth/usage` endpoint, which the user chose to keep. It renders from the cache and refreshes in a background subshell with stdio redirected to `/dev/null`. Claude Code cancels a status line run that is still going when the next update arrives, so the script must never block on the network.
+- The extra-usage segment is the only network use. It calls the undocumented `/api/oauth/usage` endpoint, which the user chose to keep. It renders from the cache and refreshes in a background subshell with stdio redirected to `/dev/null`. Claude Code cancels a status line run that is still going when the next update arrives, so the script must never block on the network.
 - Native `jq.exe` on Windows writes CRLF. `statusline.sh` strips `\r` from the jq output, and `subagent-statusline.sh` pipes through `tr -d '\r'`.
 - Keep everything bash 3.2 compatible: no `${var,,}`, `mapfile`, associative arrays or `printf -v` namerefs.
 

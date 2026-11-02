@@ -2,19 +2,21 @@
 
 [![CI](https://github.com/moictab/claude-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/moictab/claude-pulse/actions/workflows/ci.yml)
 
-A feature-rich status line for [Claude Code](https://code.claude.com/docs/en/overview) that shows real-time session info at a glance, plus custom rows for the subagent panel.
+A clean, information-dense status line for [Claude Code](https://code.claude.com/docs/en/overview), plus custom rows for the subagent panel.
 
 ```
-🤖 Opus 1M v2.1.314 | 📁 myproject@🌿 main* | 🔀 #1234 ✘ | 📊 45k/1.0m ░░░░░░░░ 4% | 🧠 thinking ✔ | 🎯 high
-⚡ 5h █░░░░ 30% @3:15pm | 7d ███░░ 73% @nov 6, 2:10pm | 💰 $23.37/$42.50 ██░░░ | 💵 $0.40 · 12m · +156/-23 | 🔥 1h 91%
+Opus 5.5 1M v2.1.316 · myproject@main* · PR #1234 ✘ · ctx ━━━─────── 29% 200k+ · xhigh
+5h ━──── 12% ↻17:10 · 7d ───── 1% ↻9 nov · extra $23.37/$42.50 ━━━── 55% · $7.21 · 12h 5m · +1046 −351 · cache 96%
 ```
 
 Subagent panel:
 
 ```
-● reviewer (code-reviewer) · opus 5.5 high · 48k ░░░░░ 4% ▁▃▃▇▄█▅ · 2m 8s · Reading src/auth/session.ts and checking t…
-✔ Explore · haiku 4.5 · 150k ███░░ 75% · Find status line callers
+● reviewer (code-reviewer) · opus 5.5 high · 48k ───── 4% ▁▃▃▇▄█▅ · 2m 8s · Reading src/auth/session.ts and checking t…
+✔ Explore · haiku 4.5 · 150k ━━━━─ 75% · Find status line callers
 ```
+
+It follows the look of Claude Code's own footer: no emoji, dim labels, ` · ` separators, and color only where it means something (the model in blue, the branch in green, warnings in yellow or red, and bars that go from green to red as they fill).
 
 ## What it shows
 
@@ -22,30 +24,29 @@ Segments only appear when Claude Code sends their data, so the line stays short 
 
 ### Line 1: session
 
-| Segment | Emoji | Description |
-|---------|-------|-------------|
-| **Model** | 🤖 | Current model name, a `1M` badge on 1M-token context windows, and the Claude Code version |
-| **Directory** | 📁 | Current working directory |
-| **Git branch** | 🌿 | Current branch with a red `*` for uncommitted or untracked changes |
-| **Worktree** | 🌳 | Worktree name when the session runs in a git worktree |
-| **Pull request** | 🔀 | Open PR for the branch (`!` for GitLab merge requests), clickable, with its review state: green ✔ approved, yellow ● pending, red ✘ changes requested, `draft` |
-| **Context usage** | 📊 | Tokens in context with a color-coded bar and percentage, plus a red `!200k` once the session crosses the 200k pricing tier |
-| **Thinking** | 🧠 | Extended thinking status (green ✔ / red ✘) |
-| **Effort** | 🎯 | Reasoning effort (`low` / `medium` / `high` / `xhigh` / `max`) on models that support it |
-| **Output style** | 🎨 | Active output style (hidden when `default`) |
-| **Fast mode** | 🚀 | Shown while fast mode is on |
-| **Agent** | 🧩 | Agent name when Claude Code runs with `--agent` |
+| Segment | Example | Description |
+|---------|---------|-------------|
+| **Model** | `Opus 5.5 1M v2.1.316` | Current model, `1M` on 1M-token context windows, and the Claude Code version |
+| **Directory and branch** | `myproject@main*` | Working directory and git branch, with a red `*` for uncommitted or untracked changes |
+| **Worktree** | `worktree my-feature` | Worktree name when the session runs in a git worktree |
+| **Pull request** | `PR #1234 ✘` | Open PR for the branch (`MR !42` for GitLab), clickable, with its review state: green ✔ approved, yellow ● pending, red ✘ changes requested, `draft` |
+| **Context** | `ctx ━━━─────── 29% 200k+` | Context window usage, plus a yellow `200k+` once the session crosses the 200k pricing tier |
+| **Thinking** | `no thinking` | Only shown when extended thinking is off |
+| **Effort** | `xhigh` | Reasoning effort on models that support it |
+| **Output style** | `style Explanatory` | Active output style (hidden when `default`) |
+| **Fast mode** | `fast` | Shown while fast mode is on |
+| **Agent** | `agent reviewer` | Agent name when Claude Code runs with `--agent` |
 
 ### Line 2: limits and cost
 
-| Segment | Emoji | Description |
-|---------|-------|-------------|
-| **5h usage** | ⚡ | 5-hour rate limit with progress bar and local reset time (Pro/Max) |
-| **7d usage** | | 7-day rate limit with progress bar and local reset date (Pro/Max) |
-| **Spend limit** | 💳 | Spend and limit in dollars with a progress bar and reset date, behind a Claude apps gateway |
-| **Extra usage** | 💰 | Extra usage credits spent vs. monthly limit, if enabled on your account |
-| **Session cost** | 💵 | Estimated session cost, session duration and lines added/removed |
-| **Prompt cache** | 🔥 / 🧊 | Whether the prompt cache is warm (with its 5m/1h TTL) or cold, and the session's cache hit ratio |
+| Segment | Example | Description |
+|---------|---------|-------------|
+| **5h usage** | `5h ━──── 12% ↻17:10` | 5-hour rate limit and the local time it resets (Pro/Max) |
+| **7d usage** | `7d ───── 1% ↻9 nov` | 7-day rate limit and the date it resets (Pro/Max) |
+| **Spend limit** | `spend $314.12/$500.00 ━━━── 63% ↻13 nov` | Spend and limit behind a Claude apps gateway |
+| **Extra usage** | `extra $23.37/$42.50 ━━━── 55%` | Extra usage credits spent vs. monthly limit, if enabled on your account |
+| **Session cost** | `$7.21 · 12h 5m · +1046 −351` | Estimated session cost, session duration and lines added/removed |
+| **Prompt cache** | `cache 96%` | Session cache hit ratio, with a yellow `cold` when the cache has expired |
 
 ### Subagent rows
 
@@ -79,7 +80,7 @@ When the panel is narrow, the row drops the activity sparkline, directory, model
 
   Without `jq`, the status line only shows `claude-pulse: jq not found`.
 - `git` (optional): branch and dirty marker
-- `curl` (optional): extra usage segment (💰)
+- `curl` (optional): extra usage segment
 
 On Windows, Claude Code runs status line commands with Git Bash, which comes with [Git for Windows](https://gitforwindows.org/). If the status line still says `jq not found` after installing it, restart Claude Code so it picks up the new `PATH`.
 
@@ -131,7 +132,7 @@ You can cap how many subagents run at once with the `CLAUDE_CODE_MAX_CONCURRENT_
 
 ### Color-coded progress bars
 
-Progress bars change color based on usage level:
+Bars are thin lines: the filled part `━` changes color with usage, and the empty part `─` stays dim.
 - **Green**: under 50%
 - **Orange**: 50-69%
 - **Yellow**: 70-89%
@@ -139,11 +140,11 @@ Progress bars change color based on usage level:
 
 ### Rate limits
 
-The 5-hour and 7-day rate limits, and the gateway spend limit, are read directly from the JSON Claude Code sends on stdin. No API call is needed. Reset times are shown in your local timezone.
+The 5-hour and 7-day rate limits, and the gateway spend limit, are read directly from the JSON Claude Code sends on stdin. No API call is needed. Reset times (`↻`) are in your local timezone: a 24-hour clock for the 5-hour limit, and a date for the others.
 
 ### Extra usage
 
-The extra usage segment (💰) is the only one that needs a network request, because Claude Code does not send that data on stdin. It reads your Claude Code OAuth token locally and calls the Anthropic OAuth usage endpoint (`https://api.anthropic.com/api/oauth/usage`), which is undocumented and may change without notice. The token is sent only to `api.anthropic.com`.
+The extra usage segment is the only one that needs a network request, because Claude Code does not send that data on stdin. It reads your Claude Code OAuth token locally and calls the Anthropic OAuth usage endpoint (`https://api.anthropic.com/api/oauth/usage`), which is undocumented and may change without notice. The token is sent only to `api.anthropic.com`.
 
 The response is cached for 60 seconds at `${TMPDIR:-/tmp}/claude/statusline-usage-cache.json`. Set `CLAUDE_PULSE_CACHE_DIR` to use another directory. The cache is refreshed in the background, so a slow request never delays the status line.
 
@@ -162,13 +163,12 @@ Works on macOS (BSD `date`, bash 3.2), Linux (GNU `date`) and Windows (Git Bash)
 The scripts use ANSI 24-bit (truecolor) escape codes. To change the colors, edit the variables at the top of `statusline.sh`:
 
 ```bash
-blue=$'\033[38;2;0;153;255m'
-orange=$'\033[38;2;255;176;85m'
-green=$'\033[38;2;0;160;0m'
-cyan=$'\033[38;2;46;149;153m'
-red=$'\033[38;2;255;85;85m'
-yellow=$'\033[38;2;230;200;0m'
-white=$'\033[38;2;220;220;220m'
+blue=$'\033[38;2;0;153;255m'    # model
+green=$'\033[38;2;0;160;0m'     # branch, lines added, bars under 50%
+orange=$'\033[38;2;255;176;85m' # bars from 50%
+yellow=$'\033[38;2;230;200;0m'  # warnings (200k+, fast, cold cache), bars from 70%
+red=$'\033[38;2;255;85;85m'     # dirty marker, lines removed, bars from 90%
+dim=$'\033[2m'                  # labels, separators, reset times
 ```
 
 The subagent rows use the same palette, defined as `def blue: ...;` functions at the top of the `jq` program in `subagent-statusline.sh`.

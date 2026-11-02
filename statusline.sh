@@ -1,7 +1,8 @@
 #!/bin/bash
-# claude-pulse: two-line status line for Claude Code.
-# Line 1: model | dir@branch | worktree | PR | context | thinking | effort | style | fast | agent
-# Line 2: 5h | 7d | spend limit | extra usage | cost | prompt cache
+# claude-pulse: two-line status line for Claude Code, styled like Claude Code's own footer:
+# dim labels, " · " separators, and color only where it carries meaning.
+# Line 1: model · dir@branch · worktree · PR · context · thinking off · effort · style · fast · agent
+# Line 2: 5h · 7d · spend limit · extra usage · cost · duration · lines · prompt cache
 
 # Most fields are assigned by `eval "$fields"` below, which shellcheck cannot follow.
 # shellcheck disable=SC2154
@@ -23,26 +24,20 @@ fi
 # ANSI truecolor codes. $'...' stores the real escape byte, so output is printed with %s
 # and backslashes in data (e.g. Windows paths) are never interpreted.
 blue=$'\033[38;2;0;153;255m'
-orange=$'\033[38;2;255;176;85m'
 green=$'\033[38;2;0;160;0m'
-cyan=$'\033[38;2;46;149;153m'
-red=$'\033[38;2;255;85;85m'
+orange=$'\033[38;2;255;176;85m'
 yellow=$'\033[38;2;230;200;0m'
-white=$'\033[38;2;220;220;220m'
+red=$'\033[38;2;255;85;85m'
 dim=$'\033[2m'
 reset=$'\033[0m'
 
-sep=" ${dim}|${reset} "
+sep=" ${dim}·${reset} "
 
 # ===== Extract every field in a single jq call =====
 # Each line is a shell assignment quoted with @sh, so eval is safe.
 fields=$(jq -r '
     def num: if type == "number" then . else empty end;
     def round0: . + 0.5 | floor;
-    def tok:
-        if . >= 1000000 then (. / 100000 | round0) as $d | "\($d / 10 | floor).\($d % 10)m"
-        elif . >= 1000 then "\(. / 1000 | round0)k"
-        else "\(floor)" end;
     def money:
         (. * 100 | round0) as $c
         | "\($c / 100 | floor).\($c % 100 | tostring | if length < 2 then "0" + . else . end)";
@@ -67,8 +62,6 @@ fields=$(jq -r '
         claude_version: (.version // ""),
         cwd: (.workspace.current_dir // .cwd // ""),
         ctx_size: $size,
-        ctx_used_fmt: ($used | tok),
-        ctx_size_fmt: ($size | tok),
         ctx_pct: (($cw.used_percentage | num) // ($used * 100 / $size) | floor),
         exceeds_200k: (.exceeds_200k_tokens // false),
         thinking_stdin: (.thinking.enabled | if . == null then "" else . end),
@@ -95,7 +88,6 @@ fields=$(jq -r '
         lines_removed: (.cost.total_lines_removed // 0),
         cache_observed: (.prompt_cache.caching_observed // false),
         cache_warm: (.prompt_cache.warm // false),
-        cache_ttl: (.prompt_cache.ttl // ""),
         cache_hit: ((.prompt_cache.hit_ratio | num | . * 100 | round0) // "")
       }
     | to_entries[]
@@ -109,7 +101,7 @@ if [ -z "$fields" ]; then
 fi
 eval "$fields"
 
-# Build a colored progress bar into $bar
+# Build a thin progress bar into $bar: filled ━ colored by usage level, empty ─ dimmed
 # Usage: build_bar <pct> <width>
 build_bar() {
     local pct=$1
@@ -117,10 +109,9 @@ build_bar() {
     [ "$pct" -lt 0 ] 2>/dev/null && pct=0
     [ "$pct" -gt 100 ] 2>/dev/null && pct=100
 
-    local filled=$(( pct * width / 100 ))
+    local filled=$(( (pct * width + 50) / 100 ))
     local empty=$(( width - filled ))
 
-    # Color based on usage level
     local bar_color
     if [ "$pct" -ge 90 ]; then bar_color="$red"
     elif [ "$pct" -ge 70 ]; then bar_color="$yellow"
@@ -129,28 +120,33 @@ build_bar() {
     fi
 
     local filled_str="" empty_str="" i
-    for ((i=0; i<filled; i++)); do filled_str+="█"; done
-    for ((i=0; i<empty; i++)); do empty_str+="░"; done
+    for ((i=0; i<filled; i++)); do filled_str+="━"; done
+    for ((i=0; i<empty; i++)); do empty_str+="─"; done
 
-    bar="${bar_color}${filled_str}${dim}${empty_str}${reset}"
+    bar="${bar_color}${filled_str}${reset}${dim}${empty_str}${reset}"
 }
 
-# Format epoch seconds as compact local time
-# Usage: format_epoch <epoch> <style: time|datetime|date>
+# Format epoch seconds as local time (17:10) or date (9 nov)
+# Usage: format_epoch <epoch> <style: time|date>
 format_epoch() {
     local epoch=$1 fmt out
     [ -z "$epoch" ] && return
     case "$2" in
-        time)     fmt="%l:%M%p" ;;
-        datetime) fmt="%b %-d, %l:%M%p" ;;
-        *)        fmt="%b %-d" ;;
+        time) fmt="%H:%M" ;;
+        *)    fmt="%-d %b" ;;
     esac
     # BSD date (macOS) takes -r <epoch>; GNU date (Linux, Git Bash) takes -d @<epoch>.
     # Each attempt is checked on its own: inside a pipeline the exit status would come from the last command.
     out=$(date -r "$epoch" +"$fmt" 2>/dev/null) || out=$(date -d "@$epoch" +"$fmt" 2>/dev/null) || return
-    out="${out//  / }"
-    out="${out# }"
     printf '%s' "$out" | tr '[:upper:]' '[:lower:]'
+}
+
+# Append " ↻<when>" for a reset time, if there is one
+# Usage: seg+=$(reset_suffix <epoch> <style>)
+reset_suffix() {
+    local when
+    when=$(format_epoch "$1" "$2")
+    [ -n "$when" ] && printf '%s' " ${dim}↻${when}${reset}"
 }
 
 # Wrap text in an OSC 8 hyperlink (clickable in terminals that support it)
@@ -182,8 +178,8 @@ if [ -z "$claude_version" ]; then
 fi
 
 # ===== Line 1: session =====
-seg="🤖 ${blue}${model_name}${reset}"
-[ "$ctx_size" -ge 1000000 ] 2>/dev/null && seg+=" ${cyan}1M${reset}"
+seg="${blue}${model_name}${reset}"
+[ "$ctx_size" -ge 1000000 ] 2>/dev/null && seg+=" ${dim}1M${reset}"
 [ -n "$claude_version" ] && seg+=" ${dim}v${claude_version}${reset}"
 add1 "$seg"
 
@@ -191,7 +187,7 @@ add1 "$seg"
 if [ -n "$cwd" ]; then
     # Normalize backslashes to forward slashes (Windows paths) before taking the basename
     cwd_normalized="${cwd//\\//}"
-    seg="📁 ${cyan}${cwd_normalized##*/}${reset}"
+    seg="${cwd_normalized##*/}"
 
     git_branch="" git_dirty=false
     git_status=$(git -C "$cwd" status --porcelain=v2 --branch 2>/dev/null)
@@ -204,20 +200,25 @@ if [ -n "$cwd" ]; then
     done <<<"$git_status"
 
     if [ -n "$git_branch" ]; then
-        seg+="${dim}@${reset}🌿 ${green}${git_branch}${reset}"
+        seg+="${dim}@${reset}${green}${git_branch}${reset}"
         $git_dirty && seg+="${red}*${reset}"
     fi
     add1 "$seg"
 fi
 
-[ -n "$worktree_name" ] && add1 "🌳 ${cyan}${worktree_name}${reset}"
+[ -n "$worktree_name" ] && add1 "${dim}worktree${reset} ${worktree_name}"
 
 # Open PR (or GitLab MR) for the branch, with review state
 if [ -n "$pr_number" ]; then
-    pr_text="#${pr_number}"
-    [ "$pr_kind" = "mr" ] && pr_text="!${pr_number}"
+    if [ "$pr_kind" = "mr" ]; then
+        seg="${dim}MR${reset} "
+        pr_text="!${pr_number}"
+    else
+        seg="${dim}PR${reset} "
+        pr_text="#${pr_number}"
+    fi
     [ -n "$pr_url" ] && pr_text=$(link "$pr_url" "$pr_text")
-    seg="🔀 ${blue}${pr_text}${reset}"
+    seg+="$pr_text"
     case "$pr_state" in
         approved)          seg+=" ${green}✔${reset}" ;;
         changes_requested) seg+=" ${red}✘${reset}" ;;
@@ -227,20 +228,17 @@ if [ -n "$pr_number" ]; then
     add1 "$seg"
 fi
 
-build_bar "$ctx_pct" 8
-seg="📊 ${orange}${ctx_used_fmt}/${ctx_size_fmt}${reset} ${bar} ${cyan}${ctx_pct}%${reset}"
-[ "$exceeds_200k" = "true" ] && seg+=" ${red}!200k${reset}"
+build_bar "$ctx_pct" 10
+seg="${dim}ctx${reset} ${bar} ${ctx_pct}%"
+[ "$exceeds_200k" = "true" ] && seg+=" ${yellow}200k+${reset}"
 add1 "$seg"
 
-if $thinking_on; then
-    add1 "🧠 ${dim}thinking${reset} ${green}✔${reset}"
-else
-    add1 "🧠 ${dim}thinking${reset} ${red}✘${reset}"
-fi
-[ -n "$effort_level" ] && add1 "🎯 ${cyan}${effort_level}${reset}"
-[ -n "$output_style" ] && [ "$output_style" != "default" ] && add1 "🎨 ${cyan}${output_style}${reset}"
-[ "$fast_mode" = "true" ] && add1 "🚀 ${yellow}fast${reset}"
-[ -n "$agent_name" ] && add1 "🧩 ${cyan}${agent_name}${reset}"
+# Thinking is always on with current models, so only its absence is worth showing
+$thinking_on || add1 "${yellow}no thinking${reset}"
+[ -n "$effort_level" ] && add1 "$effort_level"
+[ -n "$output_style" ] && [ "$output_style" != "default" ] && add1 "${dim}style${reset} ${output_style}"
+[ "$fast_mode" = "true" ] && add1 "${yellow}fast${reset}"
+[ -n "$agent_name" ] && add1 "${dim}agent${reset} ${agent_name}"
 
 # ===== Line 2: limits and cost =====
 bar_width=5
@@ -248,29 +246,20 @@ bar_width=5
 # 5-hour and 7-day rate limits (from stdin, Pro/Max only)
 if [ -n "$five_pct" ]; then
     build_bar "$five_pct" "$bar_width"
-    seg="⚡ ${white}5h${reset} ${bar} ${cyan}${five_pct}%${reset}"
-    reset_time=$(format_epoch "$five_reset" time)
-    [ -n "$reset_time" ] && seg+=" ${dim}@${reset_time}${reset}"
-    add2 "$seg"
+    add2 "${dim}5h${reset} ${bar} ${five_pct}%$(reset_suffix "$five_reset" time)"
 fi
 
 if [ -n "$seven_pct" ]; then
     build_bar "$seven_pct" "$bar_width"
-    seg="${white}7d${reset} ${bar} ${cyan}${seven_pct}%${reset}"
-    reset_time=$(format_epoch "$seven_reset" datetime)
-    [ -n "$reset_time" ] && seg+=" ${dim}@${reset_time}${reset}"
-    add2 "$seg"
+    add2 "${dim}7d${reset} ${bar} ${seven_pct}%$(reset_suffix "$seven_reset" date)"
 fi
 
 # Spend limit (stdin, Claude apps gateway only). Dollar amounts arrive later than the percentage.
 if [ -n "$spend_pct" ]; then
     build_bar "$spend_pct" "$bar_width"
-    seg="💳 "
-    [ -n "$spend_used" ] && [ -n "$spend_limit" ] && seg+="${cyan}\$${spend_used}/\$${spend_limit}${reset} "
-    seg+="${bar} ${cyan}${spend_pct}%${reset}"
-    reset_time=$(format_epoch "$spend_reset" date)
-    [ -n "$reset_time" ] && seg+=" ${dim}@${reset_time}${reset}"
-    add2 "$seg"
+    seg="${dim}spend${reset} "
+    [ -n "$spend_used" ] && [ -n "$spend_limit" ] && seg+="\$${spend_used}/\$${spend_limit} "
+    add2 "${seg}${bar} ${spend_pct}%$(reset_suffix "$spend_reset" date)"
 fi
 
 # ---- Extra usage (OAuth /api/oauth/usage; not exposed via stdin) ----
@@ -368,28 +357,22 @@ if [ -s "$cache_file" ]; then
     if [ -n "$extra" ]; then
         read -r extra_pct extra_used extra_limit <<<"$extra"
         build_bar "$extra_pct" "$bar_width"
-        add2 "💰 ${cyan}\$${extra_used}/\$${extra_limit}${reset} ${bar}"
+        add2 "${dim}extra${reset} \$${extra_used}/\$${extra_limit} ${bar} ${extra_pct}%"
     fi
 fi
 
 # Session cost, duration and lines changed
-if [ -n "$cost_usd" ]; then
-    seg="💵 ${cyan}\$${cost_usd}${reset}"
-    [ -n "$duration" ] && seg+=" ${dim}·${reset} ${white}${duration}${reset}"
-    if [ "$lines_added" != "0" ] || [ "$lines_removed" != "0" ]; then
-        seg+=" ${dim}·${reset} ${green}+${lines_added}${reset}${dim}/${reset}${red}-${lines_removed}${reset}"
-    fi
-    add2 "$seg"
+[ -n "$cost_usd" ] && add2 "\$${cost_usd}"
+[ -n "$duration" ] && add2 "$duration"
+if [ "$lines_added" != "0" ] || [ "$lines_removed" != "0" ]; then
+    add2 "${green}+${lines_added}${reset} ${red}−${lines_removed}${reset}"
 fi
 
-# Prompt cache: warm/cold, TTL and hit ratio (only once caching has been seen this session)
+# Prompt cache hit ratio, flagged when the cache has gone cold (only once caching has been seen)
 if [ "$cache_observed" = "true" ]; then
-    if [ "$cache_warm" = "true" ]; then
-        seg="🔥 ${orange}${cache_ttl:-warm}${reset}"
-    else
-        seg="🧊 ${dim}cold${reset}"
-    fi
-    [ -n "$cache_hit" ] && seg+=" ${cyan}${cache_hit}%${reset}"
+    seg="${dim}cache${reset}"
+    [ "$cache_warm" = "true" ] || seg+=" ${yellow}cold${reset}"
+    [ -n "$cache_hit" ] && seg+=" ${cache_hit}%"
     add2 "$seg"
 fi
 

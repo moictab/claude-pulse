@@ -11,12 +11,10 @@ command -v jq >/dev/null 2>&1 || exit 0
 jq -c '
     # ANSI truecolor codes, same palette as statusline.sh
     def blue: "\u001b[38;2;0;153;255m";
-    def orange: "\u001b[38;2;255;176;85m";
     def green: "\u001b[38;2;0;160;0m";
-    def cyan: "\u001b[38;2;46;149;153m";
-    def red: "\u001b[38;2;255;85;85m";
+    def orange: "\u001b[38;2;255;176;85m";
     def yellow: "\u001b[38;2;230;200;0m";
-    def white: "\u001b[38;2;220;220;220m";
+    def red: "\u001b[38;2;255;85;85m";
     def dim: "\u001b[2m";
     def reset: "\u001b[0m";
     def sep: " \(dim)·\(reset) ";
@@ -35,12 +33,12 @@ jq -c '
     # Width as the terminal sees it: drop color codes
     def visible_length: gsub("\u001b\\[[0-9;]*m"; "") | length;
 
-    # Colored progress bar, same thresholds as statusline.sh
+    # Thin progress bar, same style and thresholds as statusline.sh
     def bar($pct; $width):
         ([[$pct, 0] | max, 100] | min) as $p
-        | ($p * $width / 100 | floor) as $filled
+        | (($p * $width + 50) / 100 | floor) as $filled
         | (if $p >= 90 then red elif $p >= 70 then yellow elif $p >= 50 then orange else green end)
-          + ("█" | repeat($filled)) + dim + ("░" | repeat($width - $filled)) + reset;
+          + ("━" | repeat($filled)) + reset + dim + ("─" | repeat($width - $filled)) + reset;
 
     # Activity sparkline: tokens added per refresh tick over the last samples
     def spark:
@@ -72,21 +70,21 @@ jq -c '
     | (blue + $name + reset
        + (if .name and .agentType and .agentType != .name then " \(dim)(\(.agentType))\(reset)" else "" end)
       ) as $who
-    | ([(.model // "" | select(. != "") | cyan + model_short + reset),
+    | ([(.model // "" | select(. != "") | model_short),
         (.effort | select(. != null) | dim + (if type == "number" then "\(tok) tok" else tostring end) + reset)]
        | join(" ")) as $model
     | (.tokenCount // 0) as $token_count
-    | (orange + ($token_count | tok) + reset) as $tokens
+    | ($token_count | tok) as $tokens
     | ($tokens
        + (if (.contextWindowSize // 0) > 0
           then ($token_count * 100 / .contextWindowSize | floor) as $pct
-               | " \(bar($pct; 5)) \(cyan)\($pct)%\(reset)"
+               | " \(bar($pct; 5)) \($pct)%"
           else "" end)
       ) as $usage
-    | (if $running then .tokenSamples // [] | spark | if . != "" then " \(green)\(.)\(reset)" else "" end
+    | (if $running then .tokenSamples // [] | spark | if . != "" then " \(dim)\(.)\(reset)" else "" end
        else "" end) as $activity
-    | (if $running and .startTime then white + ([now * 1000 - .startTime, 0] | max | dur) + reset else "" end) as $elapsed
-    | (if .cwd and .cwd != $session_cwd then dim + "@" + reset + cyan + (.cwd | basename) + reset else "" end) as $dir
+    | (if $running and .startTime then dim + ([now * 1000 - .startTime, 0] | max | dur) + reset else "" end) as $elapsed
+    | (if .cwd and .cwd != $session_cwd then dim + "@" + reset + (.cwd | basename) else "" end) as $dir
     # Richest layout first; drop activity, dir, model and elapsed until the row fits
     | ([[$model, $usage + $activity, $elapsed, $dir],
         [$model, $usage, $elapsed, $dir],
@@ -102,8 +100,8 @@ jq -c '
         id,
         content: ($fixed
           + if $label == "" or $room < 8 then ""
-            elif ($label | length) > $room then sep + white + $label[:$room - 1] + "…" + reset
-            else sep + white + $label + reset end)
+            elif ($label | length) > $room then sep + $label[:$room - 1] + "…"
+            else sep + $label end)
       }
 ' <<<"$input" 2>/dev/null | tr -d '\r'  # native jq.exe on Windows writes CRLF
 

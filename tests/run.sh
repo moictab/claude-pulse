@@ -57,61 +57,57 @@ out=$(printf '%s\n' "$raw" | strip)
 l1=$(line 1 "$out")
 l2=$(line 2 "$out")
 equal  "full: two lines" "$(line_count "$out")" 2
-expect "full: model, 1M badge, version" "$l1" "🤖 Opus 1M v2.1.314"
-expect "full: directory" "$l1" "📁 claude-pulse"
-expect "full: worktree" "$l1" "🌳 my-feature"
-expect "full: PR with changes requested" "$l1" "🔀 #1234 ✘"
+expect "full: model, 1M badge, version" "$l1" "Opus 1M v2.1.314 · "
+expect "full: directory" "$l1" " · claude-pulse · "
+expect "full: worktree" "$l1" " · worktree my-feature · "
+expect "full: PR with changes requested" "$l1" " · PR #1234 ✘ · "
 expect "full: PR is an OSC 8 link" "$raw" "${esc}]8;;https://github.com/moictab/claude-pulse/pull/1234${bel}#1234${esc}]8;;${bel}"
-expect "full: context" "$l1" "📊 45k/1.0m ░░░░░░░░ 4% !200k"
-expect "full: thinking" "$l1" "🧠 thinking ✔"
-expect "full: effort" "$l1" "🎯 high"
-expect "full: output style" "$l1" "🎨 Explanatory"
-expect "full: fast mode" "$l1" "🚀 fast"
-expect "full: agent" "$l1" "🧩 security-reviewer"
-expect "full: 5h limit with reset time" "$l2" "⚡ 5h █░░░░ 30% @3:15pm"
-expect "full: 7d limit with reset date" "$l2" "7d ███░░ 73% @nov 6, 2:10pm"
-expect "full: gateway spend limit" "$l2" '💳 $314.12/$500.00 ███░░ 63% @nov 13'
-expect "full: extra usage from cache" "$l2" '💰 $23.37/$42.50 ██░░░'
-expect "full: cost, duration, lines" "$l2" '💵 $0.40 · 12m · +156/-23'
-expect "full: prompt cache" "$l2" "🔥 1h 91%"
+expect "full: context bar, percentage, 200k tier" "$l1" " · ctx ────────── 4% 200k+ · "
+reject "full: tokens are not shown in absolute numbers" "$l1" "45k"
+reject "full: thinking hidden while on" "$l1" "thinking"
+expect "full: effort, style, fast mode, agent" "$l1" " · high · style Explanatory · fast · agent security-reviewer"
+expect "full: 5h limit with reset time" "$l2" "5h ━━─── 30% ↻15:15 · "
+expect "full: 7d limit with reset date" "$l2" " · 7d ━━━━─ 73% ↻6 nov · "
+expect "full: gateway spend limit" "$l2" ' · spend $314.12/$500.00 ━━━── 63% ↻13 nov · '
+expect "full: extra usage from cache" "$l2" ' · extra $23.37/$42.50 ━━━── 55% · '
+expect "full: cost, duration, lines" "$l2" ' · $0.40 · 12m · +156 −23 · '
+expect "full: prompt cache" "$l2" " · cache 91%"
+if printf '%s' "$out" | LC_ALL=C grep -q $'\xf0\x9f'; then fail "full: no emoji" "got: $out"; else pass; fi
 
 # ---- First render: no usage yet, nulls everywhere ----
 out=$(CLAUDE_PULSE_CACHE_DIR="$tmp/cache-empty" statusline < "$fixtures/statusline-minimal.json" | strip)
 equal  "minimal: one line" "$(line_count "$out")" 1
-expect "minimal: model and version" "$out" "🤖 Sonnet v2.1.314"
-expect "minimal: empty context" "$out" "📊 0/200k ░░░░░░░░ 0%"
-expect "minimal: thinking off" "$out" "🧠 thinking ✘"
-reject "minimal: default output style hidden" "$out" "🎨"
-reject "minimal: no effort" "$out" "🎯"
-reject "minimal: no fast mode" "$out" "🚀"
+equal  "minimal: whole line" "$out" "Sonnet v2.1.314 · project · ctx ────────── 0% · no thinking"
 
 # ---- Variants of the full payload ----
 variant() { jq "$1" "$fixtures/statusline-full.json" | statusline | strip; }
 
 out=$(variant '.rate_limits.five_hour.resets_at = "2026-11-02T15:15:00Z" | .rate_limits.seven_day.resets_at = "2026-11-06T14:10:00.123+00:00"')
-expect "ISO 8601 resets_at (older Claude Code): 5h" "$out" "30% @3:15pm"
-expect "ISO 8601 resets_at (older Claude Code): 7d" "$out" "73% @nov 6, 2:10pm"
+expect "ISO 8601 resets_at (older Claude Code): 5h" "$out" "30% ↻15:15"
+expect "ISO 8601 resets_at (older Claude Code): 7d" "$out" "73% ↻6 nov"
 
 out=$(variant '.pr = {number: 42, url: "https://gitlab.com/g/p/-/merge_requests/42", review_state: "approved", kind: "mr"}')
-expect "GitLab MR uses ! and shows approval" "$out" "🔀 !42 ✔"
+expect "GitLab MR uses ! and shows approval" "$out" " · MR !42 ✔ · "
 
 out=$(variant 'del(.pr, .worktree, .workspace.git_worktree) | .prompt_cache.warm = false')
-reject "no PR segment without pr" "$out" "🔀"
-reject "no worktree segment without worktree" "$out" "🌳"
-expect "cold prompt cache" "$out" "🧊 cold 91%"
+reject "no PR segment without pr" "$out" "PR "
+reject "no worktree segment without worktree" "$out" "worktree"
+expect "cold prompt cache" "$out" " · cache cold 91%"
 
 out=$(variant 'del(.workspace) | .cwd = "/srv/legacy-project"')
-expect "falls back to cwd without workspace" "$out" "📁 legacy-project"
+expect "falls back to cwd without workspace" "$out" " · legacy-project · "
 
 raw=$(jq '.workspace.current_dir = "C:\\Users\\dev\\repos\\my-repo"' "$fixtures/statusline-full.json" | statusline)
-expect "Windows path basename" "$(printf '%s\n' "$raw" | strip)" "📁 my-repo"
+expect "Windows path basename" "$(printf '%s\n' "$raw" | strip)" " · my-repo · "
 reject "Windows path does not leak a carriage return" "$raw" $'\r'
 
 out=$(variant '.context_window.used_percentage = 95')
-expect "context bar turns full and red at 95%" "$out" "███████░ 95%"
+expect "context bar fills up at 95%" "$out" "ctx ━━━━━━━━━━ 95%"
+out=$(variant '.context_window.used_percentage = 75')
+expect "context bar rounds to the nearest cell" "$out" "ctx ━━━━━━━━── 75%"
 
 out=$(variant 'del(.rate_limits, .cost, .prompt_cache)' | sed -n 2p)
-expect "line 2 keeps extra usage when nothing else is present" "$out" "💰"
+equal "line 2 keeps extra usage when nothing else is present" "$out" 'extra $23.37/$42.50 ━━━── 55%'
 
 # ---- Git branch and dirty marker ----
 repo="$tmp/repo"
@@ -119,11 +115,11 @@ git init -q -b main "$repo"
 git -C "$repo" -c user.name=test -c user.email=test@example.com commit -q --allow-empty -m init
 payload=$(jq --arg dir "$repo" '.workspace.current_dir = $dir' "$fixtures/statusline-minimal.json")
 out=$(CLAUDE_PULSE_CACHE_DIR="$tmp/cache-empty" statusline <<<"$payload" | strip)
-expect "git: branch" "$out" "📁 repo@🌿 main"
+expect "git: branch" "$out" " · repo@main · "
 reject "git: clean tree has no dirty marker" "$out" "main*"
 : > "$repo/untracked.txt"
 out=$(CLAUDE_PULSE_CACHE_DIR="$tmp/cache-empty" statusline <<<"$payload" | strip)
-expect "git: untracked file marks the tree dirty" "$out" "🌿 main*"
+expect "git: untracked file marks the tree dirty" "$out" " · repo@main* · "
 
 # ---- Degraded input ----
 equal "empty stdin" "$(printf '' | statusline)" "Claude"
@@ -138,10 +134,10 @@ equal "subagents: one JSON line per task" "$(line_count "$out")" 5
 equal "subagents: ids echoed in order" "$(printf '%s\n' "$out" | jq -r .id | tr '\n' ' ')" "t1 t2 t3 t4 t5 "
 rows=$(printf '%s\n' "$out" | jq -r .content | strip)
 r1=$(line 1 "$rows")
-expect "subagents: running row" "$r1" "● reviewer (code-reviewer) · opus 5.5 high · 48k ░░░░░ 4% ▁▃▃▇▄█▅ · "
+expect "subagents: running row" "$r1" "● reviewer (code-reviewer) · opus 5.5 high · 48k ───── 4% ▁▃▃▇▄█▅ · "
 expect "subagents: label after the stats" "$r1" " · Reading src/auth/session.ts"
 if printf '%s\n' "$r1" | grep -Eq ' · [0-9]+h [0-9]+m · '; then pass; else fail "subagents: elapsed time" "got: $r1"; fi
-equal  "subagents: completed row" "$(line 2 "$rows")" "✔ Explore · haiku 4.5 · 150k ███░░ 75% · Find status line callers"
+equal  "subagents: completed row" "$(line 2 "$rows")" "✔ Explore · haiku 4.5 · 150k ━━━━─ 75% · Find status line callers"
 equal  "subagents: failed row in its own dir" "$(line 3 "$rows")" "✘ builder (general-purpose) · sonnet 5.5 32k tok · 950 · @builder · Build in worktree"
 reject "subagents: label equal to the name is not repeated" "$(line 4 "$rows")" "· Plan"
 expect "subagents: no activity sparkline when idle" "$(line 4 "$rows")" "● Plan · 0 · "
