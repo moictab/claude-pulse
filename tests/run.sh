@@ -37,7 +37,18 @@ line() { printf '%s\n' "$2" | sed -n "${1}p"; }
 line_count() { printf '%s' "$1" | awk 'END { print NR }'; }
 
 pass() { passed=$((passed + 1)); }
-fail() { failed=$((failed + 1)); printf 'FAIL: %s\n' "$1"; shift; printf '  %s\n' "$@"; }
+fail() {
+    failed=$((failed + 1))
+    printf 'FAIL: %s\n' "$1"
+    printf '  %s\n' "${@:2}"
+    # In GitHub Actions, also report it as an annotation so it shows up on the PR checks
+    if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+        local details
+        details=$(printf '%s\n' "${@:2}" | cat -v)
+        details="${details//'%'/%25}"
+        printf '::error title=%s::%s\n' "$1" "${details//$'\n'/%0A}"
+    fi
+}
 
 expect() {  # <description> <text> <substring>
     if [[ "$2" == *"$3"* ]]; then pass; else fail "$1" "expected: ...$3..." "got:      $2"; fi
@@ -116,6 +127,11 @@ expect "context bar rounds to the nearest cell" "$out" "ctx ━━━━━━�
 
 out=$(variant 'del(.rate_limits, .cost, .prompt_cache)' | sed -n 2p)
 equal "line 2 keeps extra usage when nothing else is present" "$out" 'extra $23.37/$42.50 ━━━── 55%'
+out=$(CLAUDE_PULSE_EXTRA_USAGE=0 statusline < "$fixtures/statusline-full.json" | strip)
+reject "CLAUDE_PULSE_EXTRA_USAGE=0 hides extra usage" "$out" "extra"
+
+equal "statusline.sh --version" "$("$BASH" "$root/statusline.sh" --version)" "claude-pulse 2.0.0"
+equal "subagent-statusline.sh --version" "$("$BASH" "$root/subagent-statusline.sh" --version)" "claude-pulse 2.0.0"
 
 # ---- Git branch and dirty marker ----
 repo="$tmp/repo"

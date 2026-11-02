@@ -1,0 +1,55 @@
+name: Bug report
+description: Something is wrong or missing in the status line or the agent panel
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw and what you expected instead. A screenshot of the status line helps a lot.
+    validations:
+      required: true
+  - type: input
+    id: claude-pulse
+    attributes:
+      label: claude-pulse version
+      description: Output of `bash ~/.claude/statusline.sh --version`
+      placeholder: claude-pulse 2.0.0
+    validations:
+      required: true
+  - type: input
+    id: claude-code
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows (Git Bash)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: tools
+    attributes:
+      label: bash and jq versions
+      description: Output of `bash --version | head -1; jq --version`
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal and font
+      description: Only needed for display problems, for example "iTerm2 with JetBrains Mono"
+  - type: textarea
+    id: settings
+    attributes:
+      label: Status line settings
+      description: The `statusLine` and `subagentStatusLine` entries from `~/.claude/settings.json`
+      render: json

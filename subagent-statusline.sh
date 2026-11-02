@@ -5,6 +5,12 @@
 # If jq is missing or fails, nothing is printed and Claude Code keeps its default rows.
 # It also saves the rows for the "agents" line of statusline.sh.
 
+CLAUDE_PULSE_VERSION="2.0.0"
+if [ "${1:-}" = "--version" ]; then
+    printf 'claude-pulse %s\n' "$CLAUDE_PULSE_VERSION"
+    exit 0
+fi
+
 IFS= read -r -d '' input  # all of stdin, without spawning cat
 [ -z "$input" ] && exit 0
 
@@ -75,11 +81,12 @@ jq -c '
     | select(.id)
     | (.status // "") as $status
     | ($status == "running") as $running
-    | (if $status == "running" then yellow + "●"
-       elif $status == "completed" then green + "✔"
-       elif $status == "failed" then red + "✘"
-       elif $status == "killed" then dim + "⊘"
-       else dim + "○" end) + reset as $icon
+    # Parenthesized whole: in `a + b as $x | ...`, `as` binds only to b (jq 1.7 errors on it)
+    | ((if $status == "running" then yellow + "●"
+        elif $status == "completed" then green + "✔"
+        elif $status == "failed" then red + "✘"
+        elif $status == "killed" then dim + "⊘"
+        else dim + "○" end) + reset) as $icon
     | (.name // .agentType // "agent") as $name
     | (blue + $name + reset
        + (if .name and .agentType and .agentType != .name then " \(dim)(\(.agentType))\(reset)" else "" end)
@@ -108,14 +115,15 @@ jq -c '
        | map($icon + " " + $who + (map(select(. != "")) | map(sep + .) | join("")))
       ) as $layouts
     | (first($layouts[] | select(visible_length < $columns)) // $layouts[-1]) as $fixed
-    | (.label // .description // "" | if . == $name then "" else . end) as $label
+    # Not $label: `label` is a keyword in jq 1.6
+    | (.label // .description // "" | if . == $name then "" else . end) as $task_label
     | ($columns - ($fixed | visible_length) - 4) as $room
     | {
         id,
         content: ($fixed
-          + if $label == "" or $room < 8 then ""
-            elif ($label | length) > $room then sep + $label[:$room - 1] + "…"
-            else sep + $label end)
+          + if $task_label == "" or $room < 8 then ""
+            elif ($task_label | length) > $room then sep + $task_label[:$room - 1] + "…"
+            else sep + $task_label end)
       }
 ' <<<"$input" 2>/dev/null | tr -d '\r'  # native jq.exe on Windows writes CRLF
 

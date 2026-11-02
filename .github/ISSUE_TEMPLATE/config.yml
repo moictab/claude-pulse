@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/moictab/claude-pulse/security/advisories/new
+    about: Please report security issues privately.
+  - name: Claude Code status line documentation
+    url: https://code.claude.com/docs/en/statusline
+    about: What Claude Code sends to status line scripts, and how to configure them.
