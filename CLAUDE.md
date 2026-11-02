@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 claude-pulse is two standalone Bash scripts for Claude Code:
 
-- `statusline.sh`: the `statusLine` command. Claude Code pipes the session JSON to it on stdin, and it prints two lines.
-- `subagent-statusline.sh`: the `subagentStatusLine` command. It receives `{columns, cwd, tasks: [...]}` on stdin and writes one `{"id", "content"}` JSON line per subagent row in the agent panel.
+- `statusline.sh`: the `statusLine` command. Claude Code pipes the session JSON to it on stdin. It prints two lines, plus a third `agents` line while subagents are listed.
+- `subagent-statusline.sh`: the `subagentStatusLine` command. It receives `{session_id, columns, cwd, tasks: [...]}` on stdin about every 5 seconds while the agent panel lists subagents. It writes one `{"id", "content"}` JSON line per row, and saves its input for the `agents` line.
 
 `jq` is required. `git` and `curl` are optional. There is no build step. Users install by curling the scripts straight from `main` on GitHub (see README), so anything merged to `main` ships to users right away.
 
@@ -24,13 +24,14 @@ bash subagent-statusline.sh < tests/fixtures/subagents.json
 
 `tests/run.sh` is a list of `expect`/`reject`/`equal` assertions on ANSI-stripped output. Run it with `TZ=UTC LC_ALL=C`, as it already does. To check a single case, render the fixture by hand or comment out the other assertions; there is no per-test runner. CI (`.github/workflows/ci.yml`) runs shellcheck, then the tests on Ubuntu, macOS (with `/bin/bash` 3.2) and Windows (Git Bash).
 
-Running `statusline.sh` by hand outside the tests may start a background request to the OAuth usage endpoint and writes the cache in `${TMPDIR:-/tmp}/claude`. Set `CLAUDE_PULSE_CACHE_DIR` to keep it elsewhere.
+Running the scripts by hand outside the tests uses the real cache in `${TMPDIR:-/tmp}/claude`. `statusline.sh` may start a background request to the OAuth usage endpoint. `subagent-statusline.sh` overwrites `subagents-<session_id>.json` there, which can show a fake agents line in a live session with the same id. Set `CLAUDE_PULSE_CACHE_DIR` to keep it elsewhere.
 
 ## statusline.sh architecture
 
 1. Read stdin with `IFS= read -r -d '' input`, not `cat`.
 2. Make **one** `jq` call that turns every field into `name='value'` lines with `@sh`, then `eval` them. Formatting (token counts, money, durations, epoch conversion) happens inside that jq program. To add a field, add a key to the jq object and use `$key` in bash. shellcheck's SC2154 is disabled file-wide because of this `eval`.
 3. Segments are appended with `add1` (line 1: session) or `add2` (line 2: limits and cost). Both join with `$sep`. Print with `printf '%s\n'`. Line 2 is omitted when empty. The script always exits 0.
+4. Line 3 (`agents`) is built by a second, separate jq program. It only runs when `$cache_dir/subagents-<session_id>.json` exists (falling back to `subagents-default.json`) and is at most `agents_max_age` (15) seconds old. The status line itself never receives subagent data; `subagent-statusline.sh` writes that file atomically on every panel tick (about 5 seconds, measured on v2.1.316). It picks the widest of three layouts that fits `$COLUMNS`: names with elapsed time, names only, then counts. With `COLUMNS` unset it uses the widest. `subagents-*.json` files older than a day are deleted in the background, at most once a minute (with the usage refresh).
 
 Visual style. The user chose this deliberately after the emoji version looked messy, so keep it:
 - It matches Claude Code's own footer. No emoji. Labels (`ctx`, `5h`, `cache`, ...), separators and reset times are `$dim`. Values use the default text color.

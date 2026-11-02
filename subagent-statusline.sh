@@ -3,9 +3,23 @@
 # Reads {columns, cwd, tasks: [...]} on stdin and writes one {"id", "content"} JSON line per row:
 # status name (type) · model effort · tokens context-bar % activity · elapsed · dir · label
 # If jq is missing or fails, nothing is printed and Claude Code keeps its default rows.
+# It also saves the rows for the "agents" line of statusline.sh.
 
 IFS= read -r -d '' input  # all of stdin, without spawning cat
 [ -z "$input" ] && exit 0
+
+# Share the rows with statusline.sh, which gets no subagent data of its own and shows a one-line
+# summary from this file. One file per session; written atomically so readers never see half of it.
+cache_dir="${CLAUDE_PULSE_CACHE_DIR:-${TMPDIR:-/tmp}/claude}"
+cache_dir="${cache_dir%/}"
+session="default"
+session_re='"session_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9_-]+)"'
+[[ $input =~ $session_re ]] && session="${BASH_REMATCH[1]}"
+if mkdir -p "$cache_dir" 2>/dev/null; then
+    agents_file="$cache_dir/subagents-$session.json"
+    printf '%s' "$input" > "$agents_file.$$" 2>/dev/null && mv -f "$agents_file.$$" "$agents_file" 2>/dev/null
+fi
+
 command -v jq >/dev/null 2>&1 || exit 0
 
 jq -c '

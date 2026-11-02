@@ -3,6 +3,7 @@
 # dim labels, " · " separators, and color only where it carries meaning.
 # Line 1: model · dir@branch · worktree · PR · context · thinking off · effort · style · fast · agent
 # Line 2: 5h · 7d · spend limit · extra usage · cost · duration · lines · prompt cache
+# Line 3: agents ● running · ✔ done · ✘ failed (only while subagents are listed)
 
 # Most fields are assigned by `eval "$fields"` below, which shellcheck cannot follow.
 # shellcheck disable=SC2154
@@ -58,6 +59,8 @@ fields=$(jq -r '
         | if . then (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)
           else ($cw.total_input_tokens // 0) end) as $used
     | {
+        now_epoch: (now | floor),
+        session_id: (.session_id // "" | gsub("[^A-Za-z0-9_-]"; "")),
         model_name: (.model.display_name // .model.id // "Claude"),
         claude_version: (.version // ""),
         cwd: (.workspace.current_dir // .cwd // ""),
@@ -157,18 +160,30 @@ link() {
 
 line1=""
 line2=""
+line3=""
 add1() { line1+="${line1:+$sep}$1"; }
 add2() { line2+="${line2:+$sep}$1"; }
 
-# Thinking status (stdin first, fall back to settings)
-thinking_on=false
-if [ "$thinking_stdin" = "true" ]; then
-    thinking_on=true
+# Cache shared by the extra-usage segment and the subagent summary
+cache_dir="${CLAUDE_PULSE_CACHE_DIR:-${TMPDIR:-/tmp}/claude}"
+cache_dir="${cache_dir%/}"
+
+# Seconds since a file was last modified; prints nothing if it doesn't exist
+file_age() {
+    local mtime
+    mtime=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null)
+    [ -n "$mtime" ] && printf '%s' $(( now_epoch - mtime ))
+}
+
+# Thinking status (stdin first, fall back to settings, where a missing alwaysThinkingEnabled means on)
+thinking_on=true
+if [ "$thinking_stdin" = "false" ]; then
+    thinking_on=false
 elif [ -z "$thinking_stdin" ]; then
     settings_path="$HOME/.claude/settings.json"
     if [ -f "$settings_path" ]; then
-        thinking_val=$(jq -r '.alwaysThinkingEnabled // false' "$settings_path" 2>/dev/null)
-        [ "$thinking_val" = "true" ] && thinking_on=true
+        thinking_val=$(jq -r '.alwaysThinkingEnabled' "$settings_path" 2>/dev/null)
+        [ "${thinking_val//$'\r'/}" = "false" ] && thinking_on=false
     fi
 fi
 
@@ -312,8 +327,6 @@ get_oauth_token() {
     echo ""
 }
 
-cache_dir="${CLAUDE_PULSE_CACHE_DIR:-${TMPDIR:-/tmp}/claude}"
-cache_dir="${cache_dir%/}"
 cache_file="$cache_dir/statusline-usage-cache.json"
 cache_max_age=60  # seconds between API calls
 
@@ -334,17 +347,15 @@ refresh_usage_cache() {
 }
 
 mkdir -p "$cache_dir" 2>/dev/null
-cache_age=$cache_max_age
-if [ -f "$cache_file" ]; then
-    cache_mtime=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null)
-    [ -n "$cache_mtime" ] && cache_age=$(( $(date +%s) - cache_mtime ))
-fi
+cache_age=$(file_age "$cache_file")
 # Refresh in the background and render from the cache: Claude Code cancels a status line script
 # that is still running when the next update arrives, so it must never wait on the network.
 # Touching the cache first marks the attempt, so concurrent runs don't fetch again.
-if [ "$cache_age" -ge "$cache_max_age" ] && command -v curl >/dev/null 2>&1; then
+if [ "${cache_age:-$cache_max_age}" -ge "$cache_max_age" ]; then
     touch "$cache_file" 2>/dev/null
-    refresh_usage_cache </dev/null >/dev/null 2>&1 &
+    command -v curl >/dev/null 2>&1 && refresh_usage_cache </dev/null >/dev/null 2>&1 &
+    # Subagent files from sessions that ended long ago (at most once a minute, like the refresh)
+    find "$cache_dir" -maxdepth 1 -name 'subagents-*.json' -mmin +1440 -exec rm -f {} + </dev/null >/dev/null 2>&1 &
 fi
 
 if [ -s "$cache_file" ]; then
@@ -376,7 +387,56 @@ if [ "$cache_observed" = "true" ]; then
     add2 "$seg"
 fi
 
+# ===== Line 3: subagents =====
+# Claude Code sends subagent data only to subagent-statusline.sh, which saves it on every panel
+# refresh. A file that has not been refreshed lately means the panel has no rows left to show.
+agents_max_age=15  # seconds
+agents_file="$cache_dir/subagents-${session_id:-default}.json"
+[ -f "$agents_file" ] || agents_file="$cache_dir/subagents-default.json"
+agents_age=$(file_age "$agents_file")
+if [ -n "$agents_age" ] && [ "$agents_age" -le "$agents_max_age" ]; then
+    # Widest layout that fits COLUMNS: names with elapsed time, then names only, then counts
+    line3=$(jq -r --argjson columns "${COLUMNS:-0}" '
+        def green: "\u001b[38;2;0;160;0m";
+        def yellow: "\u001b[38;2;230;200;0m";
+        def red: "\u001b[38;2;255;85;85m";
+        def dim: "\u001b[2m";
+        def reset: "\u001b[0m";
+        def sep: " \(dim)·\(reset) ";
+        def visible_length: gsub("\u001b\\[[0-9;]*m"; "") | length;
+        def dur:
+            (. / 1000 | floor) as $s
+            | if $s >= 3600 then "\($s / 3600 | floor)h \($s % 3600 / 60 | floor)m"
+              elif $s >= 60 then "\($s / 60 | floor)m \($s % 60)s"
+              else "\($s)s" end;
+        def icon:
+            (if . == "running" then yellow + "●"
+             elif . == "completed" then green + "✔"
+             elif . == "failed" then red + "✘"
+             elif . == "killed" then dim + "⊘"
+             else dim + "○" end) + reset;
+
+        [.tasks[]? | select(.id)] as $tasks
+        | select($tasks | length > 0)
+        | ($tasks | map((.status // "" | icon) + " " + (.name // .agentType // "agent"))) as $names
+        | ($tasks | map(if .status == "running" and .startTime
+                        then " " + dim + ([now * 1000 - .startTime, 0] | max | dur) + reset
+                        else "" end)) as $elapsed
+        | ([range(0; $names | length) | $names[.] + $elapsed[.]]) as $full
+        | ([["running", "running"], ["failed", "failed"], ["completed", "done"], ["killed", "stopped"]]
+           | map(.[0] as $status | .[1] as $word
+                 | ($tasks | map(select(.status == $status)) | length) as $n
+                 | select($n > 0)
+                 | ($status | icon) + " \($n) \($word)")) as $counts
+        | [$full, $names, $counts]
+        | map(dim + "agents" + reset + " " + join(sep))
+        | if $columns > 0 then first(.[] | select(visible_length < $columns)) // .[-1] else .[0] end
+    ' "$agents_file" 2>/dev/null)
+    line3="${line3//$'\r'/}"
+fi
+
 printf '%s\n' "$line1"
 [ -n "$line2" ] && printf '%s\n' "$line2"
+[ -n "$line3" ] && printf '%s\n' "$line3"
 
 exit 0

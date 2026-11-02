@@ -82,6 +82,14 @@ equal  "minimal: whole line" "$out" "Sonnet v2.1.314 · project · ctx ───
 # ---- Variants of the full payload ----
 variant() { jq "$1" "$fixtures/statusline-full.json" | statusline | strip; }
 
+out=$(variant 'del(.thinking)')
+reject "thinking: unknown without settings means on" "$out" "no thinking"
+mkdir -p "$HOME/.claude"
+echo '{"alwaysThinkingEnabled": false}' > "$HOME/.claude/settings.json"
+out=$(variant 'del(.thinking)')
+expect "thinking: off in settings when stdin doesn't say" "$out" " · no thinking · "
+rm -f "$HOME/.claude/settings.json"
+
 out=$(variant '.rate_limits.five_hour.resets_at = "2026-11-02T15:15:00Z" | .rate_limits.seven_day.resets_at = "2026-11-06T14:10:00.123+00:00"')
 expect "ISO 8601 resets_at (older Claude Code): 5h" "$out" "30% ↻15:15"
 expect "ISO 8601 resets_at (older Claude Code): 7d" "$out" "73% ↻6 nov"
@@ -120,6 +128,30 @@ reject "git: clean tree has no dirty marker" "$out" "main*"
 : > "$repo/untracked.txt"
 out=$(CLAUDE_PULSE_CACHE_DIR="$tmp/cache-empty" statusline <<<"$payload" | strip)
 expect "git: untracked file marks the tree dirty" "$out" " · repo@main* · "
+
+# ---- Subagent summary (line 3), fed by subagent-statusline.sh through the cache ----
+agents_cache="$tmp/cache-agents"
+mkdir -p "$agents_cache"
+: > "$agents_cache/statusline-usage-cache.json"
+now_ms=$(( $(date +%s) * 1000 ))
+jq --argjson now "$now_ms" '.tasks[0].startTime = $now - 128000 | .tasks[3].startTime = $now - 4000' \
+    "$fixtures/subagents.json" | CLAUDE_PULSE_CACHE_DIR="$agents_cache" subagents > /dev/null
+equal "summary: panel rows saved per session" "$(jq -r .session_id "$agents_cache/subagents-abc123.json")" "abc123"
+out=$(COLUMNS=200 CLAUDE_PULSE_CACHE_DIR="$agents_cache" statusline < "$fixtures/statusline-full.json" | strip)
+equal "summary: third line" "$(line_count "$out")" 3
+l3=$(line 3 "$out")
+if printf '%s\n' "$l3" | grep -Eq '^agents ● reviewer 2m [0-9]+s · ✔ Explore · ✘ builder · ● Plan [0-9]+s · ⊘ Explore$'; then
+    pass
+else
+    fail "summary: states, names and elapsed time" "got: $l3"
+fi
+out=$(COLUMNS=60 CLAUDE_PULSE_CACHE_DIR="$agents_cache" statusline < "$fixtures/statusline-full.json" | strip | sed -n 3p)
+equal "summary: counts when the names don't fit" "$out" "agents ● 2 running · ✘ 1 failed · ✔ 1 done · ⊘ 1 stopped"
+out=$(jq '.session_id = "other-session"' "$fixtures/statusline-full.json" | CLAUDE_PULSE_CACHE_DIR="$agents_cache" statusline | strip)
+equal "summary: other sessions don't show it" "$(line_count "$out")" 2
+touch -t 202001010000 "$agents_cache/subagents-abc123.json"
+out=$(CLAUDE_PULSE_CACHE_DIR="$agents_cache" statusline < "$fixtures/statusline-full.json" | strip)
+equal "summary: hidden once the panel stops refreshing it" "$(line_count "$out")" 2
 
 # ---- Degraded input ----
 equal "empty stdin" "$(printf '' | statusline)" "Claude"

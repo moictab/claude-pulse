@@ -7,6 +7,7 @@ A clean, information-dense status line for [Claude Code](https://code.claude.com
 ```
 Opus 5.5 1M v2.1.316 · myproject@main* · PR #1234 ✘ · ctx ━━━─────── 29% 200k+ · xhigh
 5h ━──── 12% ↻17:10 · 7d ───── 1% ↻9 nov · extra $23.37/$42.50 ━━━── 55% · $7.21 · 12h 5m · +1046 −351 · cache 96%
+agents ● reviewer 2m 8s · ● Plan 4s · ✔ Explore · ✘ builder
 ```
 
 Subagent panel:
@@ -20,7 +21,7 @@ It follows the look of Claude Code's own footer: no emoji, dim labels, ` · ` se
 
 ## What it shows
 
-Segments only appear when Claude Code sends their data, so the line stays short when there is nothing to report.
+The model and context segments are always there. The rest only appear when Claude Code sends their data, so the line stays short when there is nothing to report.
 
 ### Line 1: session
 
@@ -47,6 +48,12 @@ Segments only appear when Claude Code sends their data, so the line stays short 
 | **Extra usage** | `extra $23.37/$42.50 ━━━── 55%` | Extra usage credits spent vs. monthly limit, if enabled on your account |
 | **Session cost** | `$7.21 · 12h 5m · +1046 −351` | Estimated session cost, session duration and lines added/removed |
 | **Prompt cache** | `cache 96%` | Session cache hit ratio, with a yellow `cold` when the cache has expired |
+
+### Line 3: subagents
+
+While subagents are listed in the agent panel, a third line shows each one's state and name, and how long the running ones have been working: yellow ● running, green ✔ done, red ✘ failed, dim ⊘ stopped. If the line is wider than the terminal (`$COLUMNS`, which Claude Code sets), it drops the times first and then switches to counts (`agents ● 2 running · ✔ 3 done`).
+
+Claude Code sends subagent data only to the `subagentStatusLine` command, so this line needs `subagent-statusline.sh` installed too. That script runs about every 5 seconds while the panel lists subagents, and saves the rows to the cache directory, one file per session. `statusline.sh` reads that file and hides the line once it is more than 15 seconds old, which means the panel is empty.
 
 ### Subagent rows
 
@@ -78,7 +85,7 @@ When the panel is narrow, the row drops the activity sparkline, directory, model
   | Fedora | `sudo dnf install jq` |
   | Windows | `winget install jqlang.jq` |
 
-  Without `jq`, the status line only shows `claude-pulse: jq not found`.
+  Without `jq`, the status line only shows `claude-pulse: jq not found (https://jqlang.org/download/)`.
 - `git` (optional): branch and dirty marker
 - `curl` (optional): extra usage segment
 
@@ -102,7 +109,7 @@ chmod +x ~/.claude/statusline.sh ~/.claude/subagent-statusline.sh
   "statusLine": {
     "type": "command",
     "command": "bash ~/.claude/statusline.sh",
-    "refreshInterval": 30
+    "refreshInterval": 5
   },
   "subagentStatusLine": {
     "type": "command",
@@ -111,7 +118,7 @@ chmod +x ~/.claude/statusline.sh ~/.claude/subagent-statusline.sh
 }
 ```
 
-`refreshInterval` is optional. It re-runs the status line every N seconds, which keeps reset times and extra usage current while the session is idle. Without it, the status line only updates on events such as a new message. `padding` (number of characters) is also supported.
+`refreshInterval` is optional but recommended. Without it, the status line only updates on events such as a new message, so it goes quiet while Claude waits for subagents. With it, the status line re-runs every N seconds. 5 matches how often Claude Code refreshes the agent panel, which keeps the agents line and its timers current. A larger value costs less CPU, at the price of a staler agents line. `padding` (number of characters) is also supported.
 
 3. The status line appears at the bottom of Claude Code on its next update. To update claude-pulse later, run step 1 again.
 
@@ -146,7 +153,7 @@ The 5-hour and 7-day rate limits, and the gateway spend limit, are read directly
 
 The extra usage segment is the only one that needs a network request, because Claude Code does not send that data on stdin. It reads your Claude Code OAuth token locally and calls the Anthropic OAuth usage endpoint (`https://api.anthropic.com/api/oauth/usage`), which is undocumented and may change without notice. The token is sent only to `api.anthropic.com`.
 
-The response is cached for 60 seconds at `${TMPDIR:-/tmp}/claude/statusline-usage-cache.json`. Set `CLAUDE_PULSE_CACHE_DIR` to use another directory. The cache is refreshed in the background, so a slow request never delays the status line.
+The response is cached for 60 seconds at `${TMPDIR:-/tmp}/claude/statusline-usage-cache.json`. Set `CLAUDE_PULSE_CACHE_DIR` to use another directory. The cache is refreshed in the background, so a slow request never delays the status line. The same directory holds the per-session `subagents-*.json` files for the agents line. Files older than a day are deleted during the refresh.
 
 The OAuth token is resolved from, in order:
 - `CLAUDE_CODE_OAUTH_TOKEN` environment variable
@@ -164,14 +171,14 @@ The scripts use ANSI 24-bit (truecolor) escape codes. To change the colors, edit
 
 ```bash
 blue=$'\033[38;2;0;153;255m'    # model
-green=$'\033[38;2;0;160;0m'     # branch, lines added, bars under 50%
+green=$'\033[38;2;0;160;0m'     # branch, lines added, approved PR, bars under 50%
 orange=$'\033[38;2;255;176;85m' # bars from 50%
-yellow=$'\033[38;2;230;200;0m'  # warnings (200k+, fast, cold cache), bars from 70%
-red=$'\033[38;2;255;85;85m'     # dirty marker, lines removed, bars from 90%
+yellow=$'\033[38;2;230;200;0m'  # warnings (200k+, fast, no thinking, cold cache), pending PR, bars from 70%
+red=$'\033[38;2;255;85;85m'     # dirty marker, lines removed, changes requested, bars from 90%
 dim=$'\033[2m'                  # labels, separators, reset times
 ```
 
-The subagent rows use the same palette, defined as `def blue: ...;` functions at the top of the `jq` program in `subagent-statusline.sh`.
+`jq` programs can't read shell variables, so the agents line (at the end of `statusline.sh`) and the subagent rows (`subagent-statusline.sh`) define the same colors as `def green: ...;` functions. Change them there too.
 
 ## Development
 
