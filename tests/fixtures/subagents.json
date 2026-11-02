@@ -1,0 +1,75 @@
+{
+  "session_id": "abc123",
+  "transcript_path": "/path/to/transcript.jsonl",
+  "cwd": "/home/dev/project",
+  "columns": 120,
+  "tasks": [
+    {
+      "id": "t1",
+      "name": "reviewer",
+      "type": "local_agent",
+      "agentType": "code-reviewer",
+      "status": "running",
+      "description": "Review the auth changes",
+      "label": "Reading src/auth/session.ts and checking token refresh paths for race conditions",
+      "startTime": 1793500000000,
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "contextWindowSize": 1000000,
+      "tokenCount": 48200,
+      "tokenSamples": [1000, 1000, 5000, 9000, 20000, 26000, 40000, 48200],
+      "cwd": "/home/dev/project"
+    },
+    {
+      "id": "t2",
+      "type": "local_agent",
+      "agentType": "Explore",
+      "status": "completed",
+      "description": "Find status line callers",
+      "label": "Find status line callers",
+      "startTime": 1793500000000,
+      "model": "claude-haiku-4-5-20251001",
+      "contextWindowSize": 200000,
+      "tokenCount": 150000,
+      "tokenSamples": [150000],
+      "cwd": "/home/dev/project"
+    },
+    {
+      "id": "t3",
+      "name": "builder",
+      "type": "local_agent",
+      "agentType": "general-purpose",
+      "status": "failed",
+      "description": "Build in worktree",
+      "label": "Build in worktree",
+      "startTime": 1793500000000,
+      "model": "claude-sonnet-5-5[1m]",
+      "effort": 32000,
+      "tokenCount": 950,
+      "tokenSamples": [],
+      "cwd": "/home/dev/project/.claude/worktrees/builder"
+    },
+    {
+      "id": "t4",
+      "type": "local_agent",
+      "agentType": "Plan",
+      "status": "running",
+      "description": "Plan",
+      "label": "Plan",
+      "startTime": 1793500000000,
+      "tokenCount": 0,
+      "tokenSamples": [0, 0, 0]
+    },
+    {
+      "id": "t5",
+      "type": "local_agent",
+      "agentType": "Explore",
+      "status": "killed",
+      "description": "Search for callers",
+      "label": "Search for callers",
+      "startTime": 1793500000000,
+      "tokenCount": 10,
+      "tokenSamples": [10]
+    }
+  ]
+}

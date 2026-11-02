@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: shellcheck statusline.sh subagent-statusline.sh tests/run.sh
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ensure jq
+        run: |
+          if ! command -v jq >/dev/null; then
+            case "$RUNNER_OS" in
+              Linux) sudo apt-get install -y jq ;;
+              macOS) brew install jq ;;
+              Windows) choco install jq -y --no-progress ;;
+            esac
+          fi
+          jq --version
+
+      # macOS runs the tests with the system /bin/bash (3.2), the oldest bash users are likely to have
+      - name: Run tests
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then /bin/bash --version | head -1; /bin/bash tests/run.sh; else bash tests/run.sh; fi

@@ -1,0 +1,72 @@
+{
+  "cwd": "/nonexistent/claude-pulse",
+  "session_id": "abc123",
+  "session_name": "my-session",
+  "transcript_path": "/path/to/transcript.jsonl",
+  "model": { "id": "claude-opus-5-5", "display_name": "Opus" },
+  "workspace": {
+    "current_dir": "/nonexistent/claude-pulse",
+    "project_dir": "/nonexistent/claude-pulse",
+    "added_dirs": [],
+    "git_worktree": "feature-xyz"
+  },
+  "version": "2.1.314",
+  "output_style": { "name": "Explanatory" },
+  "cost": {
+    "total_cost_usd": 0.4,
+    "total_duration_ms": 754000,
+    "total_api_duration_ms": 2300,
+    "total_lines_added": 156,
+    "total_lines_removed": 23
+  },
+  "context_window": {
+    "total_input_tokens": 45000,
+    "total_output_tokens": 1200,
+    "context_window_size": 1000000,
+    "used_percentage": 4,
+    "remaining_percentage": 96,
+    "current_usage": {
+      "input_tokens": 2000,
+      "output_tokens": 1200,
+      "cache_creation_input_tokens": 3000,
+      "cache_read_input_tokens": 40000
+    }
+  },
+  "exceeds_200k_tokens": true,
+  "prompt_cache": {
+    "warm": true,
+    "caching_observed": true,
+    "ttl": "1h",
+    "expires_at": 1793630000,
+    "requests": 14,
+    "misses": 2,
+    "hit_ratio": 0.913
+  },
+  "fast_mode": true,
+  "effort": { "level": "high" },
+  "thinking": { "enabled": true },
+  "rate_limits": {
+    "five_hour": { "used_percentage": 30.4, "resets_at": 1793632500 },
+    "seven_day": { "used_percentage": 72.6, "resets_at": 1793974200 },
+    "spend_limit": {
+      "used_percentage": 62.8,
+      "resets_at": 1794528000,
+      "used_usd": 314.12,
+      "limit_usd": 500,
+      "period": "monthly"
+    }
+  },
+  "agent": { "name": "security-reviewer" },
+  "pr": {
+    "number": 1234,
+    "url": "https://github.com/moictab/claude-pulse/pull/1234",
+    "review_state": "changes_requested"
+  },
+  "worktree": {
+    "name": "my-feature",
+    "path": "/path/to/.claude/worktrees/my-feature",
+    "branch": "worktree-my-feature",
+    "original_cwd": "/path/to/project",
+    "original_branch": "main"
+  }
+}
