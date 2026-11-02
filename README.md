@@ -1,99 +1,30 @@
 # claude-pulse
 
 [![CI](https://github.com/moictab/claude-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/moictab/claude-pulse/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A clean, information-dense status line for [Claude Code](https://code.claude.com/docs/en/overview), plus custom rows for the subagent panel.
+A clean, information-dense status line for [Claude Code](https://code.claude.com/docs/en/overview): model, git, context, rate limits, cost and your running subagents, at a glance.
 
-```
-Opus 5.5 1M v2.1.316 · myproject@main* · PR #1234 ✘ · ctx ━━━─────── 29% 200k+ · xhigh
-5h ━──── 12% ↻17:10 · 7d ───── 1% ↻9 nov · extra $23.37/$42.50 ━━━── 55% · $7.21 · 12h 5m · +1046 −351 · cache 96%
-agents ● reviewer 2m 8s · ● Plan 4s · ✔ Explore · ✘ builder
-```
+![claude-pulse status line and agent panel](docs/preview.svg)
 
-Subagent panel:
+- **Everything in three lines.** Line 1 is the session, line 2 is limits and cost, and line 3 is your subagents, shown only while there are any.
+- **Subagents always in view.** See which subagents are running, finished or failed without opening the agent panel. The panel rows get model, context, activity and elapsed time.
+- **Quiet by design.** It follows the look of Claude Code's own footer, with no emoji. Color only marks something worth noticing.
+- **Fast and local.** Two Bash scripts that read Claude Code's JSON with `jq`, and never block on the network. Nothing leaves your machine except one optional request, which you can turn off ([details](#privacy)).
+- **Works everywhere Claude Code does:** macOS, Linux and Windows (Git Bash), tested in CI on each.
 
-```
-● reviewer (code-reviewer) · opus 5.5 high · 48k ───── 4% ▁▃▃▇▄█▅ · 2m 8s · Reading src/auth/session.ts and checking t…
-✔ Explore · haiku 4.5 · 150k ━━━━─ 75% · Find status line callers
-```
+## Quick start
 
-It follows the look of Claude Code's own footer: no emoji, dim labels, ` · ` separators, and color only where it means something (the model in blue, the branch in green, warnings in yellow or red, and bars that go from green to red as they fill).
+**1. Install [`jq`](https://jqlang.org/download/)** (1.6 or later), if you don't have it:
 
-## What it shows
+| OS | Command |
+|----|---------|
+| macOS | `brew install jq` |
+| Debian / Ubuntu | `sudo apt install jq` |
+| Fedora | `sudo dnf install jq` |
+| Windows | `winget install jqlang.jq` |
 
-The model and context segments are always there. The rest only appear when Claude Code sends their data, so the line stays short when there is nothing to report.
-
-### Line 1: session
-
-| Segment | Example | Description |
-|---------|---------|-------------|
-| **Model** | `Opus 5.5 1M v2.1.316` | Current model, `1M` on 1M-token context windows, and the Claude Code version |
-| **Directory and branch** | `myproject@main*` | Working directory and git branch, with a red `*` for uncommitted or untracked changes |
-| **Worktree** | `worktree my-feature` | Worktree name when the session runs in a git worktree |
-| **Pull request** | `PR #1234 ✘` | Open PR for the branch (`MR !42` for GitLab), clickable, with its review state: green ✔ approved, yellow ● pending, red ✘ changes requested, `draft` |
-| **Context** | `ctx ━━━─────── 29% 200k+` | Context window usage, plus a yellow `200k+` once the session crosses the 200k pricing tier |
-| **Thinking** | `no thinking` | Only shown when extended thinking is off |
-| **Effort** | `xhigh` | Reasoning effort on models that support it |
-| **Output style** | `style Explanatory` | Active output style (hidden when `default`) |
-| **Fast mode** | `fast` | Shown while fast mode is on |
-| **Agent** | `agent reviewer` | Agent name when Claude Code runs with `--agent` |
-
-### Line 2: limits and cost
-
-| Segment | Example | Description |
-|---------|---------|-------------|
-| **5h usage** | `5h ━──── 12% ↻17:10` | 5-hour rate limit and the local time it resets (Pro/Max) |
-| **7d usage** | `7d ───── 1% ↻9 nov` | 7-day rate limit and the date it resets (Pro/Max) |
-| **Spend limit** | `spend $314.12/$500.00 ━━━── 63% ↻13 nov` | Spend and limit behind a Claude apps gateway |
-| **Extra usage** | `extra $23.37/$42.50 ━━━── 55%` | Extra usage credits spent vs. monthly limit, if enabled on your account |
-| **Session cost** | `$7.21 · 12h 5m · +1046 −351` | Estimated session cost, session duration and lines added/removed |
-| **Prompt cache** | `cache 96%` | Session cache hit ratio, with a yellow `cold` when the cache has expired |
-
-### Line 3: subagents
-
-While subagents are listed in the agent panel, a third line shows each one's state and name, and how long the running ones have been working: yellow ● running, green ✔ done, red ✘ failed, dim ⊘ stopped. If the line is wider than the terminal (`$COLUMNS`, which Claude Code sets), it drops the times first and then switches to counts (`agents ● 2 running · ✔ 3 done`).
-
-Claude Code sends subagent data only to the `subagentStatusLine` command, so this line needs `subagent-statusline.sh` installed too. That script runs about every 5 seconds while the panel lists subagents, and saves the rows to the cache directory, one file per session. `statusline.sh` reads that file and hides the line once it is more than 15 seconds old, which means the panel is empty.
-
-### Subagent rows
-
-`subagent-statusline.sh` replaces the default row of each subagent in the panel below the prompt:
-
-| Part | Description |
-|------|-------------|
-| **Status** | Yellow ● running, green ✔ completed, red ✘ failed, ⊘ stopped |
-| **Name** | Subagent name and, in parentheses, its type (`Explore`, `Plan`, or a custom agent) |
-| **Model** | Short model name and effort, e.g. `opus 5.5 high` |
-| **Tokens** | Token count with a context bar and percentage |
-| **Activity** | Sparkline of tokens added per refresh, while running |
-| **Elapsed** | Time since the subagent started, while running |
-| **Directory** | `@dir` when the subagent works in its own directory, such as an isolated worktree |
-| **Task** | Progress summary, truncated to the panel width |
-
-When the panel is narrow, the row drops the activity sparkline, directory, model and elapsed time, in that order, so it still fits on one line.
-
-## Requirements
-
-- [Claude Code](https://code.claude.com/docs/en/overview). Newer fields need recent versions, for example v2.1.251+ for the prompt cache and v2.1.293+ for subagent types. Missing fields simply hide their segment.
-- `bash` 3.2 or later (the macOS system bash works)
-- [`jq`](https://jqlang.org/download/) **(required)**:
-
-  | OS | Install |
-  |----|---------|
-  | macOS | `brew install jq` |
-  | Debian / Ubuntu | `sudo apt install jq` |
-  | Fedora | `sudo dnf install jq` |
-  | Windows | `winget install jqlang.jq` |
-
-  Without `jq`, the status line only shows `claude-pulse: jq not found (https://jqlang.org/download/)`.
-- `git` (optional): branch and dirty marker
-- `curl` (optional): extra usage segment
-
-On Windows, Claude Code runs status line commands with Git Bash, which comes with [Git for Windows](https://gitforwindows.org/). If the status line still says `jq not found` after installing it, restart Claude Code so it picks up the new `PATH`.
-
-## Installation
-
-1. Download both scripts to your Claude config directory:
+**2. Download the two scripts** into your Claude config directory:
 
 ```bash
 mkdir -p ~/.claude
@@ -102,7 +33,7 @@ curl -fsSL -o ~/.claude/subagent-statusline.sh https://raw.githubusercontent.com
 chmod +x ~/.claude/statusline.sh ~/.claude/subagent-statusline.sh
 ```
 
-2. Add them to your Claude Code settings (`~/.claude/settings.json`):
+**3. Add them to `~/.claude/settings.json`** (merge these keys into what is already there):
 
 ```json
 {
@@ -118,13 +49,70 @@ chmod +x ~/.claude/statusline.sh ~/.claude/subagent-statusline.sh
 }
 ```
 
-`refreshInterval` is optional but recommended. Without it, the status line only updates on events such as a new message, so it goes quiet while Claude waits for subagents. With it, the status line re-runs every N seconds. 5 matches how often Claude Code refreshes the agent panel, which keeps the agents line and its timers current. A larger value costs less CPU, at the price of a staler agents line. `padding` (number of characters) is also supported.
+That's it: the status line appears on Claude Code's next update. To check the install, run `bash ~/.claude/statusline.sh --version`.
 
-3. The status line appears at the bottom of Claude Code on its next update. To update claude-pulse later, run step 1 again.
+On Windows, Claude Code runs these commands with Git Bash, which comes with [Git for Windows](https://gitforwindows.org/).
+
+## What it shows
+
+The model and context are always shown. Every other segment appears only when Claude Code sends its data, so the lines stay short when there is nothing to report.
+
+### Line 1: session
+
+| Segment | Example | Description |
+|---------|---------|-------------|
+| **Model** | `Opus 5.5 1M v2.1.316` | Current model, `1M` on 1M-token context windows, and the Claude Code version |
+| **Directory and branch** | `myproject@main*` | Working directory and git branch, with a red `*` for uncommitted or untracked changes |
+| **Worktree** | `worktree my-feature` | Worktree name when the session runs in a git worktree |
+| **Pull request** | `PR #128 ✔` | Open PR for the branch (`MR !42` for GitLab), clickable in terminals that support links, with its review state: green ✔ approved, yellow ● pending, red ✘ changes requested, `draft` |
+| **Context** | `ctx ━━━━────── 42% 200k+` | Context window usage, plus a yellow `200k+` once the session crosses the 200k-token pricing tier |
+| **Thinking** | `no thinking` | Only shown when extended thinking is off |
+| **Effort** | `xhigh` | Reasoning effort, on models that support it |
+| **Output style** | `style Explanatory` | Active output style (hidden when `default`) |
+| **Fast mode** | `fast` | Shown while fast mode is on |
+| **Agent** | `agent reviewer` | Agent name when Claude Code runs with `--agent` |
+
+### Line 2: limits and cost
+
+| Segment | Example | Description |
+|---------|---------|-------------|
+| **5h limit** | `5h ━━─── 34% ↻17:10` | 5-hour rate limit and the local time it resets (Pro and Max plans) |
+| **7d limit** | `7d ━━━── 61% ↻9 nov` | 7-day rate limit and the date it resets (Pro and Max plans) |
+| **Spend limit** | `spend $314.12/$500.00 ━━━── 63% ↻13 nov` | Spend and limit, behind a Claude apps gateway |
+| **Extra usage** | `extra $23.37/$42.50 ━━━── 55%` | Extra usage credits spent vs. monthly limit, if enabled on your account ([see Privacy](#privacy)) |
+| **Session cost** | `$7.21 · 1h 12m · +1046 −351` | Estimated session cost, session duration and lines added/removed |
+| **Prompt cache** | `cache 96%` | Session cache hit ratio, with a yellow `cold` once the cache has expired |
+
+Bars fill with `━` in green, then orange from 50%, yellow from 70% and red from 90%; the empty part `─` stays dim.
+
+### Line 3: subagents
+
+`agents ● reviewer 2m 9s · ● test-runner 42s · ✔ Explore · ✘ builder`
+
+While the agent panel lists subagents, this line shows each one's state and name, and how long the running ones have been working: yellow ● running, green ✔ done, red ✘ failed, dim ⊘ stopped. If it doesn't fit the terminal width, it drops the times first, then switches to counts (`agents ● 2 running · ✔ 3 done`). It disappears about 15 seconds after the panel empties.
+
+Claude Code only sends subagent data to the `subagentStatusLine` command, so this line needs both scripts installed. `subagent-statusline.sh` saves the panel rows to a cache file (about every 5 seconds), and `statusline.sh` reads it. That's also why `refreshInterval` is recommended: without it, the status line only updates on events like a new message, and goes quiet while Claude waits for subagents.
+
+### Agent panel rows
+
+`subagent-statusline.sh` also replaces each row of the agent panel below the prompt:
+
+| Part | Example | Description |
+|------|---------|-------------|
+| **Status** | `●` | Yellow ● running, green ✔ completed, red ✘ failed, ⊘ stopped |
+| **Name** | `reviewer (code-reviewer)` | Subagent name and its type (`Explore`, `Plan` or a custom agent) |
+| **Model** | `opus 5.5 high` | Short model name and effort |
+| **Tokens** | `48k ───── 4%` | Token count and context usage |
+| **Activity** | `▁▃▃▇▄█▅` | Tokens added per refresh, while running |
+| **Elapsed** | `2m 8s` | Time since it started, while running |
+| **Directory** | `@builder` | Shown when the subagent works in its own directory, such as an isolated worktree |
+| **Task** | `Checking token refresh…` | Progress summary, cut to fit the panel |
+
+In a narrow panel, rows drop the activity, directory, model and elapsed time, in that order, to stay on one line.
 
 ## Managing subagents
 
-The status line scripts only display subagents. Claude Code has no API for an external script to stop or message one, so you manage them with Claude Code's own controls:
+claude-pulse displays subagents but can't control them: Claude Code offers no way for an external script to stop or message one. Use Claude Code's own controls:
 
 | Where | Action |
 |-------|--------|
@@ -133,41 +121,30 @@ The status line scripts only display subagents. Claude Code has no API for an ex
 | `Ctrl+B` | Send running subagents and Bash commands to the background |
 | `Ctrl+X Ctrl+K` | Stop all running background subagents (press twice within 3 seconds to confirm) |
 
-You can cap how many subagents run at once with the `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` environment variable (default 20), and block a subagent type with a permission rule such as `"deny": ["Agent(Explore)"]`. See the [subagents documentation](https://code.claude.com/docs/en/sub-agents) for details.
+To cap how many subagents run at once, set the `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` environment variable (default 20). To block a subagent type, use a permission rule such as `"deny": ["Agent(Explore)"]`. See the [subagents documentation](https://code.claude.com/docs/en/sub-agents).
 
-## Features
+## Configuration
 
-### Color-coded progress bars
+### Status line settings
 
-Bars are thin lines: the filled part `━` changes color with usage, and the empty part `─` stays dim.
-- **Green**: under 50%
-- **Orange**: 50-69%
-- **Yellow**: 70-89%
-- **Red**: 90%+
+| Setting | Description |
+|---------|-------------|
+| `refreshInterval` | Re-run the status line every N seconds, on top of event-driven updates. `5` matches the agent panel's refresh rate; larger values use less CPU but update the agents line less often. |
+| `padding` | Extra horizontal spacing, in characters. |
 
-### Rate limits
+### Environment variables
 
-The 5-hour and 7-day rate limits, and the gateway spend limit, are read directly from the JSON Claude Code sends on stdin. No API call is needed. Reset times (`↻`) are in your local timezone: a 24-hour clock for the 5-hour limit, and a date for the others.
+Set them in the `command` itself, for example `"command": "CLAUDE_PULSE_EXTRA_USAGE=0 bash ~/.claude/statusline.sh"`.
 
-### Extra usage
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAUDE_PULSE_EXTRA_USAGE` | `1` | `0` turns off the extra usage segment: no token lookup and no network request |
+| `CLAUDE_PULSE_CACHE_DIR` | `${TMPDIR:-/tmp}/claude` | Where the scripts keep their cache. If you change it, set it for both commands. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | | OAuth token to use for the extra usage request, instead of looking one up |
 
-The extra usage segment is the only one that needs a network request, because Claude Code does not send that data on stdin. It reads your Claude Code OAuth token locally and calls the Anthropic OAuth usage endpoint (`https://api.anthropic.com/api/oauth/usage`), which is undocumented and may change without notice. The token is sent only to `api.anthropic.com`.
+### Colors
 
-The response is cached for 60 seconds at `${TMPDIR:-/tmp}/claude/statusline-usage-cache.json`. Set `CLAUDE_PULSE_CACHE_DIR` to use another directory. The cache is refreshed in the background, so a slow request never delays the status line. The same directory holds the per-session `subagents-*.json` files for the agents line. Files older than a day are deleted during the refresh.
-
-The OAuth token is resolved from, in order:
-- `CLAUDE_CODE_OAUTH_TOKEN` environment variable
-- macOS Keychain
-- Linux and Windows credentials file (`~/.claude/.credentials.json`)
-- GNOME Keyring
-
-### Cross-platform
-
-Works on macOS (BSD `date`, bash 3.2), Linux (GNU `date`) and Windows (Git Bash). CI runs the test suite on all three.
-
-## Customization
-
-The scripts use ANSI 24-bit (truecolor) escape codes. To change the colors, edit the variables at the top of `statusline.sh`:
+The scripts use 24-bit (truecolor) ANSI colors, defined at the top of `statusline.sh`:
 
 ```bash
 blue=$'\033[38;2;0;153;255m'    # model
@@ -178,17 +155,68 @@ red=$'\033[38;2;255;85;85m'     # dirty marker, lines removed, changes requested
 dim=$'\033[2m'                  # labels, separators, reset times
 ```
 
-`jq` programs can't read shell variables, so the agents line (at the end of `statusline.sh`) and the subagent rows (`subagent-statusline.sh`) define the same colors as `def green: ...;` functions. Change them there too.
+`jq` programs can't read shell variables, so the agents line (at the end of `statusline.sh`) and the panel rows (`subagent-statusline.sh`) define the same colors as `def green: ...;` functions. Change them there too. Your changes are overwritten when you update.
 
-## Development
+## Privacy
+
+Everything is computed locally from the JSON Claude Code passes to the scripts, plus `git` and your `~/.claude/settings.json` (read only to check whether thinking is turned off).
+
+The one exception is the **extra usage** segment, because Claude Code doesn't provide that data. To show it, `statusline.sh` looks up your Claude Code OAuth token and sends it to `https://api.anthropic.com/api/oauth/usage`, at most once a minute, in the background. The token is never sent anywhere else. It looks for the token in, in order:
+
+1. the `CLAUDE_CODE_OAUTH_TOKEN` environment variable
+2. the macOS Keychain
+3. `~/.claude/.credentials.json` (Linux and Windows)
+4. the GNOME Keyring
+
+That endpoint is undocumented and may change or stop working without notice. Set `CLAUDE_PULSE_EXTRA_USAGE=0` to turn the segment off: the scripts then make no network requests and never read your token.
+
+The scripts write only to the cache directory (`${TMPDIR:-/tmp}/claude` by default): the extra-usage response (`statusline-usage-cache.json`) and one `subagents-<session id>.json` file per session for the agents line. Session files older than a day are deleted automatically.
+
+## Troubleshooting
+
+**The status line says `claude-pulse: jq not found`.** Install `jq` (see [Quick start](#quick-start)), then restart Claude Code so it picks up the new `PATH`.
+
+**Nothing shows up, or only `Claude`.** Test the script by hand:
 
 ```bash
-bash tests/run.sh                                         # tests (needs jq and git, runs offline)
-shellcheck statusline.sh subagent-statusline.sh tests/run.sh
+echo '{"model":{"display_name":"Opus"},"context_window":{"used_percentage":12}}' | bash ~/.claude/statusline.sh
 ```
 
-The tests pipe the JSON fixtures in `tests/fixtures/` through both scripts and check the rendered output.
+If that prints a status line, check that `~/.claude/settings.json` is valid JSON and that `disableAllHooks` isn't set, since it also turns off status lines.
+
+**The agents line never appears.** It needs both `statusLine` and `subagentStatusLine` configured, and they must use the same `CLAUDE_PULSE_CACHE_DIR`. Without `refreshInterval`, it only updates when Claude Code redraws the status line.
+
+**Symbols show up as boxes.** Use a terminal font with box-drawing characters and common Unicode symbols, such as JetBrains Mono, Cascadia Code, SF Mono or Menlo.
+
+**Reset times are in the wrong timezone.** They use the system timezone; set `TZ` in the command (`"command": "TZ=Europe/Madrid bash ~/.claude/statusline.sh"`).
+
+**No extra usage segment.** It needs a Pro or Max plan with extra usage enabled, `curl`, and a Claude account login (not an API key). It is fetched in the background, so it shows up on the status line update after the first one.
+
+Still stuck? [Open an issue](https://github.com/moictab/claude-pulse/issues/new/choose).
+
+## Updating and uninstalling
+
+**Update:** run the `curl` commands from [Quick start](#quick-start) again. See what changed in the [changelog](CHANGELOG.md).
+
+**Uninstall:** remove the `statusLine` and `subagentStatusLine` keys from `~/.claude/settings.json`, then delete the scripts and their cache:
+
+```bash
+rm ~/.claude/statusline.sh ~/.claude/subagent-statusline.sh
+rm -f "${TMPDIR:-/tmp}/claude/statusline-usage-cache.json" "${TMPDIR:-/tmp}"/claude/subagents-*.json
+```
+
+## Compatibility
+
+- **Claude Code:** any version with status lines. Segments for newer fields, such as the prompt cache (v2.1.251+) or subagent types (v2.1.293+), simply don't appear on older versions.
+- **Systems:** macOS, Linux and Windows with Git Bash.
+- **Tools:** bash 3.2+, jq 1.6+. `git` and `curl` are optional.
+
+CI runs the test suite on Ubuntu 22.04, 24.04 and 26.04 (GNU and Rust coreutils), macOS (system bash 3.2) and Windows (Git Bash).
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run the tests.
 
 ## License
 
-MIT
+[MIT](LICENSE). claude-pulse is an independent project, not affiliated with or endorsed by Anthropic.

@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest a new segment or an improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to see?
+      description: What you want to know at a glance, and why it matters to you.
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: Where does the data come from?
+      description: If you know it, the field in Claude Code's [status line JSON](https://code.claude.com/docs/en/statusline#available-data) that has it.

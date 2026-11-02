@@ -20,9 +20,23 @@ bash tests/run.sh                                              # all tests; offl
 shellcheck statusline.sh subagent-statusline.sh tests/run.sh   # lint
 bash statusline.sh < tests/fixtures/statusline-full.json       # render a fixture by hand
 bash subagent-statusline.sh < tests/fixtures/subagents.json
+bash docs/make-preview.sh                                      # regenerate docs/preview.svg (needs python3)
 ```
 
-`tests/run.sh` is a list of `expect`/`reject`/`equal` assertions on ANSI-stripped output. Run it with `TZ=UTC LC_ALL=C`, as it already does. To check a single case, render the fixture by hand or comment out the other assertions; there is no per-test runner. CI (`.github/workflows/ci.yml`) runs shellcheck, then the tests on Ubuntu, macOS (with `/bin/bash` 3.2) and Windows (Git Bash).
+`tests/run.sh` is a list of `expect`/`reject`/`equal` assertions on ANSI-stripped output. Run it with `TZ=UTC LC_ALL=C`, as it already does. To check a single case, render the fixture by hand or comment out the other assertions; there is no per-test runner. Under GitHub Actions, failures are also printed as `::error` annotations, which the public API serves without auth (`/repos/moictab/claude-pulse/check-runs/<job id>/annotations`), unlike job logs.
+
+CI (`.github/workflows/ci.yml`) runs on every push. It runs shellcheck, then the tests on:
+- ubuntu-22.04 (jq 1.6)
+- ubuntu-24.04 (jq 1.7.1, GNU coreutils)
+- ubuntu-latest (26.04, Rust uutils coreutils)
+- macOS (with `/bin/bash` 3.2)
+- Windows (Git Bash)
+
+Local runs on Windows use jq 1.8, which accepts things that 1.6 and 1.7 reject (see the jq rules below), so a green local run doesn't prove CI will pass.
+
+`docs/preview.svg` (the README image) is generated from the scripts' real output by `docs/make-preview.sh` and `docs/ansi2svg.py`. Regenerate it when the visible output changes.
+
+The version lives in `CLAUDE_PULSE_VERSION` in both scripts (`--version` prints it). Bump both, add a `CHANGELOG.md` entry, and tag `vX.Y.Z` after merging (see CONTRIBUTING.md).
 
 Running the scripts by hand outside the tests uses the real cache in `${TMPDIR:-/tmp}/claude`. `statusline.sh` may start a background request to the OAuth usage endpoint. `subagent-statusline.sh` overwrites `subagents-<session_id>.json` there, which can show a fake agents line in a live session with the same id. Set `CLAUDE_PULSE_CACHE_DIR` to keep it elsewhere.
 
@@ -45,9 +59,13 @@ Conventions:
 - `build_bar <pct> <width>` sets the global `$bar` (no subshell). It draws a colored `━` filled part, rounded to the nearest cell, and a dim `─` empty part. Width is 10 for context and 5 for everything else. Colors: green below 50, orange from 50, yellow from 70, red from 90. `subagent-statusline.sh` has the same `bar` in jq.
 - `resets_at` is Unix epoch seconds. The jq `epoch` helper also accepts ISO 8601 strings from older Claude Code versions. `format_epoch` tries BSD `date -r` and then GNU `date -d @`, each checked on its own. Never put the first attempt in a pipeline before `||`: the pipeline's exit status comes from its last command, so the fallback would never run.
 - Git uses a single `git status --porcelain=v2 --branch` call for both the branch and the dirty state.
-- The extra-usage segment is the only network use. It calls the undocumented `/api/oauth/usage` endpoint, which the user chose to keep. It renders from the cache and refreshes in a background subshell with stdio redirected to `/dev/null`. Claude Code cancels a status line run that is still going when the next update arrives, so the script must never block on the network.
+- The extra-usage segment is the only network use. It calls the undocumented `/api/oauth/usage` endpoint, which the user chose to keep. It renders from the cache and refreshes in a background subshell with stdio redirected to `/dev/null`. Claude Code cancels a status line run that is still going when the next update arrives, so the script must never block on the network. `CLAUDE_PULSE_EXTRA_USAGE=0` (or `false`, `off`, `no`) skips both the token lookup and the request.
 - Native `jq.exe` on Windows writes CRLF. `statusline.sh` strips `\r` from the jq output, and `subagent-statusline.sh` pipes through `tr -d '\r'`.
 - Keep everything bash 3.2 compatible: no `${var,,}`, `mapfile`, associative arrays or `printf -v` namerefs.
+- Keep every jq program jq 1.6 compatible. The first two points below broke the subagent rows on Ubuntu's jq while local jq 1.8 passed:
+  - Never name a variable after a keyword. `$label` is a syntax error in jq 1.6.
+  - Parenthesize before `as`. `(x) + reset as $icon | ...` binds `as` to `reset` alone, and jq 1.7 then adds a string to the final object. Write `((x) + reset) as $icon`.
+  - The Windows build of jq 1.6 lacks `strptime`, so `fromdateiso8601` fails there. Only the legacy ISO `resets_at` path uses it, inside `try`.
 
 ## subagent-statusline.sh architecture
 
@@ -57,6 +75,7 @@ Subagents can only be displayed, not managed, from these scripts. The docs offer
 
 ## Repo hygiene
 
-- `.gitattributes` forces LF for `*.sh`, `*.json` and `*.yml`, because bash breaks on CRLF and this repo is developed on Windows with `core.autocrlf=true`.
+- `.gitattributes` forces LF for `*.sh`, `*.py`, `*.json`, `*.yml` and `*.svg`, because bash breaks on CRLF and this repo is developed on Windows with `core.autocrlf=true`.
 - The scripts are tracked as executable (mode 100755). Keep that when adding scripts (`git update-index --chmod=+x`).
-- `README.md` has segment tables, example output and the color block. Update them, and the fixtures and tests, whenever a segment changes.
+- The repo is public. `README.md` is written for end users; it has the segment tables, the Privacy, Troubleshooting and Configuration sections, and the color block. Update them, and the fixtures and tests, whenever a segment, setting or env var changes.
+- CONTRIBUTING.md, SECURITY.md, CHANGELOG.md, and the issue and PR templates in `.github/` exist too. Keep them consistent with any change to setup, privacy or versioning.
